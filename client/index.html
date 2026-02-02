@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+
+    <title>Vik's Pizza | Experimental Pizza Lab</title>
+    <meta property="og:title" content="Vik's Pizza" />
+    <meta property="og:description" content="EST. 2025. Experimental toppings. Free pies for honest reviews." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/attached_assets/generated_images/vikspizza_trans.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Vik's Pizza" />
+    <meta name="twitter:description" content="EST. 2025. Experimental toppings. Free pies for honest reviews." />
+    <meta name="twitter:image" content="/attached_assets/generated_images/vikspizza_trans.png" />
+
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=3" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=3" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=3" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png?v=3" />
+    <link rel="shortcut icon" href="/favicon-32x32.png?v=3" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Using Space Grotesk for headings (modern, technical but friendly) and DM Sans for body (clean, readable) -->
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <script>
+      // Initialize theme before React renders to prevent flash
+      (function() {
+        const stored = localStorage.getItem("theme");
+        const theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        if (theme === "dark") {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

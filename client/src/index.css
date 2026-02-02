@@ -1,0 +1,149 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: "DM Sans", sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "Space Mono", monospace;
+}
+
+:root {
+  /* Upscale Color Palette - European Bakery Aesthetic */
+  /* Warm Oat / Linen (Base) - Lighter version of banner background */
+  --background: 35 25% 88%; /* Lighter beige/parchment */
+  --foreground: 15 25% 14%; /* Deep espresso brown */
+
+  --card: 35 22% 90%; /* Slightly lighter than background */
+  --card-foreground: 15 25% 14%;
+
+  --popover: 35 25% 88%; /* Same as background */
+  --popover-foreground: 15 25% 14%;
+
+  /* Burnt Sienna / Brick Clay (Primary) - #B14A2B */
+  --primary: 15 61% 43%; 
+  --primary-foreground: 35 25% 94%;
+
+  /* Muted Sage Green (Secondary) - #7F8F7A */
+  --secondary: 105 8% 52%;
+  --secondary-foreground: 35 25% 94%;
+
+  /* Warm Grey Muted */
+  --muted: 35 18% 92%; /* Adjusted to complement lighter background */
+  --muted-foreground: 15 10% 40%;
+
+  /* Soft Brass / Warm Gold (Accent) - #C6A35D */
+  --accent: 38 48% 57%;
+  --accent-foreground: 15 25% 14%;
+
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 35 25% 94%;
+
+  --border: 35 18% 90%; /* Adjusted to complement lighter background */
+  --input: 35 18% 90%;
+  --ring: 15 61% 43%;
+
+  --radius: 0.3rem;
+  
+  --chart-1: 15 61% 50%;
+  --chart-2: 105 8% 55%;
+  --chart-3: 38 48% 60%;
+  --chart-4: 15 25% 20%;
+  --chart-5: 35 25% 70%;
+}
+
+.dark {
+  /* Upscale Dark Theme - Deep Espresso Brown base */
+  --background: 15 25% 10%; /* Deep espresso brown (darker) */
+  --foreground: 35 25% 95%; /* Warm oat/linen text */
+
+  --card: 15 25% 13%;
+  --card-foreground: 35 25% 95%;
+
+  --popover: 15 25% 13%;
+  --popover-foreground: 35 25% 95%;
+
+  /* Burnt Sienna Primary (lighter for dark mode) */
+  --primary: 15 61% 55%;
+  --primary-foreground: 35 25% 95%;
+
+  /* Muted Sage Green Secondary (lighter for dark mode) */
+  --secondary: 105 8% 60%;
+  --secondary-foreground: 35 25% 95%;
+
+  --muted: 15 20% 20%;
+  --muted-foreground: 35 15% 70%;
+
+  /* Soft Brass / Warm Gold Accent */
+  --accent: 38 48% 62%;
+  --accent-foreground: 15 25% 14%;
+
+  --destructive: 0 62.8% 50%;
+  --destructive-foreground: 35 25% 95%;
+
+  --border: 15 20% 20%;
+  --input: 15 20% 20%;
+  --ring: 15 61% 55%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground selection:bg-primary/20;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-bold tracking-tight;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .receipt-edge {
+    position: relative;
+  }
+  .receipt-edge::after {
+    content: "";
+    position: absolute;
+    bottom: -8px;
+    left: 0;
+    width: 100%;
+    height: 8px;
+    background: radial-gradient(circle, transparent 50%, transparent 50%), 
+                radial-gradient(circle, var(--color-card) 50%, transparent 50%);
+    background-size: 16px 16px;
+    background-position: 0 -8px;
+  }
+}
