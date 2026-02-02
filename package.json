@@ -8,7 +8,7 @@
     "dev": "NODE_ENV=development tsx server/index.ts",
     "dev:cf": "npm run build:cf && wrangler pages dev dist/public --compatibility-date=2024-01-01",
     "build": "tsx script/build.ts",
-    "build:cf": "npx tsx script/build-cf.ts",
+    "build:cf": "npm exec -- tsx script/build-cf.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "deploy:cf": "npm run build:cf && wrangler pages deploy dist/public --project-name=pizzapilot",
     "check": "tsc",
@@ -85,13 +85,15 @@
     "ws": "^8.18.0",
     "zod": "^3.25.76",
     "zod-validation-error": "^3.4.0",
-    "tsx": "^4.20.5"
+    "tsx": "^4.20.5",
+    "vite": "^7.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "@tailwindcss/vite": "^4.1.14",
+    "@replit/vite-plugin-runtime-error-modal": "^0.0.3"
   },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
-    "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
-    "@tailwindcss/vite": "^4.1.14",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/express": "4.17.21",
     "@types/express-session": "^1.18.0",
@@ -101,14 +103,12 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/ws": "^8.5.13",
-    "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "drizzle-kit": "^0.31.4",
     "esbuild": "^0.25.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.14",
-    "typescript": "5.6.3",
-    "vite": "^7.1.9"
+    "typescript": "5.6.3"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
