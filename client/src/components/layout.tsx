@@ -16,19 +16,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-background font-sans selection:bg-primary/10">
-      <header className="border-b border-border/40 bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className={`border-b border-border/40 sticky top-0 z-50 ${theme === "dark" ? "bg-background" : "bg-background/80 backdrop-blur-sm"}`}>
         <div className="w-full">
           <Link href="/" className="block">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-0 group cursor-pointer">
+            <div className={`max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-0 group cursor-pointer ${theme === "dark" ? "bg-background" : ""}`}>
               <img 
-                src={theme === "dark" ? "/attached_assets/generated_images/vikspizza_dark4_1.png" : "/attached_assets/generated_images/vikspizza_color4_1.png"} 
+                src={theme === "dark" ? "/attached_assets/generated_images/vikspizza_color7_1_dark.png" : "/attached_assets/generated_images/vikspizza_color7_light.png"} 
                 alt="Vik's Pizza" 
-                className="w-full h-auto object-contain transition-opacity duration-300 group-hover:opacity-80"
+                className="w-4/5 h-auto object-contain transition-opacity duration-300 group-hover:opacity-80 mx-auto"
               />
             </div>
           </Link>
 
-          <nav className="flex items-center gap-6 py-3 max-w-4xl mx-auto px-4 justify-end">
+          <nav className="flex items-center gap-6 pb-3 pt-0 max-w-4xl mx-auto px-4 justify-end">
             <a 
               href="/" 
               onClick={(e) => {

@@ -62,6 +62,15 @@ export default function Home() {
             Accepting Orders for This Week
           </motion.div>
           
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-2"
+          >
+            Our pizza is a developer's best friend..... and yours too!
+          </motion.p>
+          
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -69,7 +78,8 @@ export default function Home() {
             className="text-4xl md:text-6xl font-display font-bold tracking-tight text-foreground uppercase"
           >
             Instantiate Pizza.<br/>
-            <span className="text-primary">Satiate Hunger.</span>
+            <span className="text-primary">Satiate Hunger.</span><br/>
+            <span className="text-foreground">WRITE CODE.</span>
           </motion.h1>
           
           <motion.p 

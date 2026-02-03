@@ -20,38 +20,45 @@ git push origin main
 
 1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
 2. Navigate to **Pages** in the sidebar
-3. Click **"Create a project"**
+3. Click **"Create Application"** (or "Create a project" in older UI)
 4. Click **"Connect to Git"**
 5. Select your Git provider (GitHub, GitLab, or Bitbucket)
 6. Authorize Cloudflare to access your repositories
-7. Select the `PizzaPilot` repository
+7. Select the `PizzaPilot` repository (or `vikspizza/PizzaPilot`)
 8. Click **"Begin setup"**
 
 ### 3. Configure Build Settings
 
-In the build configuration screen, set:
+In the "Set up your application" screen, configure:
 
-- **Project name**: `pizzapilot` (or your preferred name)
-- **Production branch**: `main` (or `master` if that's your default branch)
-- **Build command**: `npm run build:cf`
+- **Project name**: `PizzaPilot` (or your preferred name - already filled in)
+- **Build command**: `npm run build:cf` (already filled in - keep this)
+- **Deploy command**: **Leave this empty or remove `npx wrangler deploy`** - Pages doesn't need a deploy command, it deploys automatically after the build
+- **Builds for non-production branches**: ✅ Check this box (enables preview deployments)
+
+**Note:** If you see "Advanced settings", click it to access:
 - **Build output directory**: `dist/public`
 - **Root directory**: `/` (leave empty or set to root)
+- **Production branch**: `main` (or `master` if that's your default branch)
 
 ### 4. Add Environment Variables
 
-Click **"Add environment variable"** and add:
+**Important:** Environment variables are configured **after** the initial deployment, not during setup.
 
-**For Production:**
-- **Variable name**: `DATABASE_URL`
-- **Value**: Your Neon database connection string
-- **Encrypt**: ✅ Check this box (makes it a secret)
+After clicking "Deploy", you'll need to:
+1. Go to your project → **Settings** → **Environment variables**
+2. Click **"Add environment variable"**
+3. Add:
+   - **Variable name**: `DATABASE_URL`
+   - **Value**: Your Neon database connection string
+   - **Encrypt**: ✅ Check this box (makes it a secret)
+4. Save and redeploy
 
-**Optional - For Preview Deployments:**
-You can also add environment variables for preview branches if you want different settings for staging.
+**Alternative:** If you see an "Advanced settings" link during setup, you may be able to add environment variables there.
 
 ### 5. Deploy
 
-Click **"Save and Deploy"**
+Click **"Deploy"** button
 
 Cloudflare will:
 1. Clone your repository
@@ -106,6 +113,13 @@ To update environment variables after initial setup:
 
 ## 🐛 Troubleshooting
 
+### UI Shows "Worker" Setup Instead of "Pages"
+If the setup screen says "Configure your Worker project" but you're deploying a Pages app:
+- This is normal - Cloudflare has unified the UI
+- **Remove or leave empty** the "Deploy command" field (Pages doesn't need it)
+- Keep the "Build command" as `npm run build:cf`
+- After deployment, verify it's listed under **Pages** in the sidebar, not Workers
+
 ### Build Fails
 - Check the build logs in Cloudflare Dashboard
 - Make sure `package.json` has all required dependencies
@@ -120,6 +134,11 @@ To update environment variables after initial setup:
 - Verify `DATABASE_URL` is correctly set
 - Make sure it's marked as **Encrypted** (secret)
 - Check that your Neon database allows connections from Cloudflare IPs
+
+### Can't Find Environment Variables During Setup
+- Environment variables are typically added **after** the first deployment
+- Go to: Project → **Settings** → **Environment variables**
+- Add `DATABASE_URL` there, then trigger a new deployment
 
 ## 🎯 Best Practices
 

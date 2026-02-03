@@ -40,14 +40,14 @@
 :root {
   /* Upscale Color Palette - European Bakery Aesthetic */
   /* Warm Oat / Linen (Base) - Lighter version of banner background */
-  --background: 35 25% 88%; /* Lighter beige/parchment */
-  --foreground: 15 25% 14%; /* Deep espresso brown */
+  --background: 25 83% 98%; /* #FEF8F4 - rgb(254, 248, 244) */
+  --foreground: 22 57% 20%; /* #4f2b16 - rgb(79, 43, 22) */
 
   --card: 35 22% 90%; /* Slightly lighter than background */
-  --card-foreground: 15 25% 14%;
+  --card-foreground: 22 57% 20%; /* #4f2b16 */
 
-  --popover: 35 25% 88%; /* Same as background */
-  --popover-foreground: 15 25% 14%;
+  --popover: 25 83% 98%; /* Same as background */
+  --popover-foreground: 22 57% 20%; /* #4f2b16 */
 
   /* Burnt Sienna / Brick Clay (Primary) - #B14A2B */
   --primary: 15 61% 43%; 
@@ -63,7 +63,7 @@
 
   /* Soft Brass / Warm Gold (Accent) - #C6A35D */
   --accent: 38 48% 57%;
-  --accent-foreground: 15 25% 14%;
+  --accent-foreground: 22 57% 20%; /* #4f2b16 */
 
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 35 25% 94%;
@@ -120,10 +120,19 @@
     @apply border-border;
   }
   body {
-    @apply font-sans antialiased bg-background text-foreground selection:bg-primary/20;
+    @apply font-sans font-normal antialiased bg-background text-foreground selection:bg-primary/20;
   }
+  /* Headings use Space Grotesk Bold (matching "VIK'S PIZZA" in logo) */
   h1, h2, h3, h4, h5, h6 {
     @apply font-display font-bold tracking-tight;
+  }
+  /* Navigation links and labels use DM Sans Medium (matching "vikspizza.com" and "EST 2025" in logo) */
+  nav a, nav button, .nav-link, label, .label {
+    @apply font-sans font-medium;
+  }
+  /* Small text and captions use DM Sans Regular (matching "OVEN O(n) • PIZZA OPTIMIZED" in logo) */
+  small, .text-sm, .caption {
+    @apply font-sans font-normal;
   }
 }
 
