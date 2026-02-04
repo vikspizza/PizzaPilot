@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { ShoppingBag, Lock, User, Sun, Moon } from "lucide-react";
+import { ShoppingBag, User, Sun, Moon } from "lucide-react";
 import { api } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { useTheme } from "@/hooks/use-theme";
@@ -99,15 +99,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Moon size={16} className="text-foreground/80" />
               )}
             </Button>
-            
-            <div className="h-4 w-px bg-border/60" />
-            
-            <Link href="/admin">
-              <div className={`text-sm font-medium transition-colors hover:text-primary flex items-center gap-1.5 cursor-pointer ${location.startsWith("/admin") ? "text-primary" : "text-foreground/80"}`}>
-                <Lock size={14} />
-                Ops
-              </div>
-            </Link>
           </nav>
         </div>
       </header>
