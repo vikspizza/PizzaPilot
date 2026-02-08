@@ -78,6 +78,9 @@ export interface IStorage {
   // Batch availability
   getAvailableQuantity(batchId: string, pizzaId: string): Promise<number>;
   isPizzaAvailableInBatch(batchId: string, pizzaId: string, quantity: number): Promise<boolean>;
+
+  // Past experiments: distinct pizzas ever offered, with count of batches each appeared in
+  getPastExperiments(): Promise<Array<Pizza & { offerCount: number }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -388,6 +391,28 @@ export class DatabaseStorage implements IStorage {
   async isPizzaAvailableInBatch(batchId: string, pizzaId: string, quantity: number): Promise<boolean> {
     const available = await this.getAvailableQuantity(batchId, pizzaId);
     return available >= quantity;
+  }
+
+  async getPastExperiments(): Promise<Array<Pizza & { offerCount: number }>> {
+    const rows = await db
+      .select({
+        pizza: schema.pizzas,
+        pizzaId: schema.batchPizzas.pizzaId,
+      })
+      .from(schema.batchPizzas)
+      .innerJoin(schema.pizzas, eq(schema.batchPizzas.pizzaId, schema.pizzas.id));
+
+    const byPizzaId = new Map<string, { pizza: Pizza; count: number }>();
+    for (const row of rows) {
+      if (byPizzaId.has(row.pizzaId)) {
+        byPizzaId.get(row.pizzaId)!.count++;
+      } else {
+        byPizzaId.set(row.pizzaId, { pizza: row.pizza, count: 1 });
+      }
+    }
+    return Array.from(byPizzaId.values())
+      .map(({ pizza, count }) => ({ ...pizza, offerCount: count }))
+      .sort((a, b) => b.offerCount - a.offerCount);
   }
 }
 

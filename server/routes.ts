@@ -72,6 +72,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/pizzas/past-experiments", async (_req, res) => {
+    try {
+      const pastExperiments = await storage.getPastExperiments();
+      res.json(pastExperiments);
+    } catch (error) {
+      console.error("Error fetching past experiments:", error);
+      res.status(500).json({ error: "Failed to fetch past experiments" });
+    }
+  });
+
   app.post("/api/pizzas", async (req, res) => {
     try {
       const pizza = insertPizzaSchema.parse(req.body);

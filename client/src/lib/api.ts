@@ -162,6 +162,12 @@ export const api = {
     return res.json();
   },
 
+  getPastExperiments: async (): Promise<Array<Pizza & { offerCount: number }>> => {
+    const res = await fetch("/api/pizzas/past-experiments");
+    if (!res.ok) throw new Error("Failed to fetch past experiments");
+    return res.json();
+  },
+
   updatePizza: async (id: string, pizza: Partial<Pizza>): Promise<Pizza> => {
     const res = await fetch(`/api/pizzas/${id}`, {
       method: "PATCH",

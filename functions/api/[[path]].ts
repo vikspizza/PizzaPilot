@@ -139,9 +139,8 @@ export async function onRequest(context: any) {
           } : null,
         });
       } else {
-        const pizzas = await storage.getActivePizzas();
         return jsonResponse({
-          pizzas: pizzas.map(p => ({ ...p, soldOut: true })),
+          pizzas: [],
           currentBatch: null,
           nextBatch: null,
         });
@@ -151,6 +150,11 @@ export async function onRequest(context: any) {
     if (path === "/api/pizzas/all" && method === "GET") {
       const pizzas = await storage.getPizzas();
       return jsonResponse(pizzas);
+    }
+
+    if (path === "/api/pizzas/past-experiments" && method === "GET") {
+      const pastExperiments = await storage.getPastExperiments();
+      return jsonResponse(pastExperiments);
     }
 
     if (path === "/api/pizzas" && method === "POST") {

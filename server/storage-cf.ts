@@ -354,6 +354,28 @@ class DatabaseStorage {
     const available = await this.getAvailableQuantity(batchId, pizzaId);
     return available >= quantity;
   }
+
+  async getPastExperiments(): Promise<Array<Pizza & { offerCount: number }>> {
+    const rows = await this.db
+      .select({
+        pizza: schema.pizzas,
+        pizzaId: schema.batchPizzas.pizzaId,
+      })
+      .from(schema.batchPizzas)
+      .innerJoin(schema.pizzas, eq(schema.batchPizzas.pizzaId, schema.pizzas.id));
+
+    const byPizzaId = new Map<string, { pizza: Pizza; count: number }>();
+    for (const row of rows) {
+      if (byPizzaId.has(row.pizzaId)) {
+        byPizzaId.get(row.pizzaId)!.count++;
+      } else {
+        byPizzaId.set(row.pizzaId, { pizza: row.pizza, count: 1 });
+      }
+    }
+    return Array.from(byPizzaId.values())
+      .map(({ pizza, count }) => ({ ...pizza, offerCount: count }))
+      .sort((a, b) => b.offerCount - a.offerCount);
+  }
 }
 
 // Export class instead of instance (instance created in function handler with db)

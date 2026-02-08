@@ -13,11 +13,13 @@ import About from "@/pages/about";
 import FAQs from "@/pages/faqs";
 import Privacy from "@/pages/privacy";
 import Review from "@/pages/review";
+import PastExperiments from "@/pages/past-experiments";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/past-experiments" component={PastExperiments} />
       <Route path="/about" component={About} />
       <Route path="/faqs" component={FAQs} />
       <Route path="/privacy" component={Privacy} />
