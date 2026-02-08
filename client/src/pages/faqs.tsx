@@ -8,11 +8,11 @@ export default function FAQs() {
       question: "Why Vik's Pizza?",
       answer: (
         <>
-          Because we genuinely believe your everyday, go-to pizza should be both affordable and awesome—
-          not just the thing you settle for between meetings.
+          Because we genuinely believe your everyday, go-to pizza should be both affordable and awesome —
+          not just the pie you settle for from anywhere.
           <br /><br />
           We're on a mission to deliver pizza that feels handcrafted, thoughtful, and shockingly delicious…
-          the way you wish your code deployments felt.
+          we want to be the best pizza you've ever had!
         </>
       ),
     },
@@ -72,11 +72,10 @@ export default function FAQs() {
       question: "How do I get a pie?",
       answer: (
         <>
-          We open orders on select days, in limited quantities.
-          Think of it as a pizza drop—
-          except instead of NFTs, you get something actually edible.
+          Check this website to order. We open orders on select days (usually weekends and holidays),
+          in limited quantities.
           <br /><br />
-          Join the queue early. FIFO rules apply.
+          Do note that free pizzas are limited to 2 per household so more people get to try our pies.
         </>
       ),
     },
@@ -96,16 +95,12 @@ export default function FAQs() {
       question: "What style of pizza is Vik's Pizza?",
       answer: (
         <>
-          We specialize in a Neo-NY / artisan hybrid:
-          <ul className="list-disc list-inside mt-3 space-y-2 ml-4">
-            <li>crisp bottom</li>
-            <li>airy, open crumb</li>
-            <li>high-temp blistering</li>
-            <li>toppings balanced like a well-designed microservice</li>
-          </ul>
-          <br />
-          Light enough to eat before a meeting.
-          Delicious enough to justify turning your camera off afterward.
+          We specialize in a Neo-NY / artisan hybrid and Detroit Styles.
+          <br /><br />
+          Look for crisp bottom, airy and open crumb, classic NY chew.
+          <br /><br />
+          As the saying goes... our pies are light enough to eat before a meeting.
+          Delicious enough to justify turning your camera off afterward!
         </>
       ),
     },
@@ -152,7 +147,7 @@ export default function FAQs() {
           <br /><br />
           But our dough is fermented for days, our ingredients are clean, and we avoid grease bombs.
           <br /><br />
-          Vik's Pizza wants you awake during your code review—not asleep at your keyboard.
+          Vik's Pizza wants you satiated - not in food coma!
         </>
       ),
     },
@@ -164,7 +159,7 @@ export default function FAQs() {
           <ul className="list-disc list-inside mt-3 space-y-2 ml-4">
             <li>Eat pizza</li>
             <li>Give honest feedback</li>
-            <li>Tell a friend (or your entire engineering team)</li>
+            <li>Tell a friend.</li>
           </ul>
           <br />
           If you want to go full fanboy/fangirl, we won't stop you.

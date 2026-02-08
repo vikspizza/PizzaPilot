@@ -16,10 +16,13 @@ export default function Profile() {
   const [isLoadingUser, setIsLoadingUser] = useState(false);
 
   useEffect(() => {
+    setIsLoadingUser(true);
     const u = api.getCurrentUser();
     setUser(u);
+    setIsLoadingUser(false);
     if (!u) {
       setLocation("/login");
+      return;
     }
   }, [setLocation]);
 
@@ -30,8 +33,8 @@ export default function Profile() {
   });
 
   const { data: pizzas } = useQuery({
-    queryKey: ["pizzas"],
-    queryFn: api.getPizzas,
+    queryKey: ["all-pizzas"],
+    queryFn: api.getAllPizzas,
   });
 
   // Fetch reviews for all completed orders to check which ones have been reviewed
@@ -46,7 +49,7 @@ export default function Profile() {
     setLocation("/");
   };
 
-  if (isLoadingUser) {
+  if (isLoadingUser || !user) {
     return (
       <Layout>
         <div className="flex justify-center py-24">
@@ -55,8 +58,6 @@ export default function Profile() {
       </Layout>
     );
   }
-
-  if (!user) return null;
 
   return (
     <Layout>
