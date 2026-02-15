@@ -5,7 +5,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 export default function FAQs() {
   const faqs = [
     {
-      question: "Why Vik's Pizza?",
+      question: "Why CRUSTOPS?",
       answer: (
         <>
           Because we genuinely believe your everyday, go-to pizza should be both affordable and awesome —
@@ -41,7 +41,7 @@ export default function FAQs() {
             <li>Arrives with flavor that would pass any code review</li>
           </ul>
           <br />
-          Quality-in, quality-out. That's Vik's Pizza.
+          Quality-in, quality-out. That's CRUSTOPS.
         </>
       ),
     },
@@ -59,7 +59,7 @@ export default function FAQs() {
             <li>Fine-tune recipes</li>
             <li>Optimize crust algorithms</li>
             <li>Improve flavor performance</li>
-            <li>Shape what Vik's Pizza becomes</li>
+            <li>Shape what CRUSTOPS becomes</li>
           </ul>
           <br />
           We take every review seriously.
@@ -92,7 +92,7 @@ export default function FAQs() {
       ),
     },
     {
-      question: "What style of pizza is Vik's Pizza?",
+      question: "What style of pizza is CRUSTOPS?",
       answer: (
         <>
           We specialize in a Neo-NY / artisan hybrid and Detroit Styles.
@@ -147,12 +147,12 @@ export default function FAQs() {
           <br /><br />
           But our dough is fermented for days, our ingredients are clean, and we avoid grease bombs.
           <br /><br />
-          Vik's Pizza wants you satiated - not in food coma!
+          CRUSTOPS wants you satiated - not in food coma!
         </>
       ),
     },
     {
-      question: "How can I support Vik's Pizza?",
+      question: "How can I support CRUSTOPS?",
       answer: (
         <>
           Simple:
@@ -183,7 +183,7 @@ export default function FAQs() {
             </h1>
             
             <p className="text-lg text-muted-foreground">
-              Everything you need to know about Vik's Pizza, our pizza, and how we operate.
+              Everything you need to know about CRUSTOPS, our pizza, and how we operate.
             </p>
 
             <div className="mt-8">

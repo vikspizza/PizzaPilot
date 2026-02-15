@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Lock, Check, X, ChefHat, Package, Truck, XCircle, Plus, Edit, Trash2, Calendar, Clock } from "lucide-react";
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext } from "@/components/ui/pagination";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -357,12 +358,15 @@ function AdminDashboard() {
   );
 }
 
+const BATCHES_PER_PAGE = 10;
+
 function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const { data: batches, isLoading: batchesLoading } = useQuery({
     queryKey: ["batches"],
@@ -496,8 +500,16 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {batches?.map((batch) => (
+        <div className="space-y-4">
+          {(() => {
+            const sortedBatches = [...(batches || [])].sort((a, b) => b.batchNumber - a.batchNumber);
+            const totalPages = Math.ceil(sortedBatches.length / BATCHES_PER_PAGE);
+            const startIdx = (currentPage - 1) * BATCHES_PER_PAGE;
+            const paginatedBatches = sortedBatches.slice(startIdx, startIdx + BATCHES_PER_PAGE);
+            return (
+              <>
+                <div className="grid gap-4">
+                  {paginatedBatches.map((batch) => (
             <Card key={batch.id}>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -583,7 +595,57 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
                 </CardContent>
               )}
             </Card>
-          ))}
+                  ))}
+                </div>
+                {totalPages > 1 && (
+                  <div className="flex flex-col items-center gap-4 pt-4">
+                    <p className="text-sm text-muted-foreground">
+                      Showing {startIdx + 1}-{Math.min(startIdx + BATCHES_PER_PAGE, sortedBatches.length)} of {sortedBatches.length} batches
+                    </p>
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setCurrentPage((p) => Math.max(1, p - 1));
+                            }}
+                            className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                          <PaginationItem key={page}>
+                            <PaginationLink
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setCurrentPage(page);
+                              }}
+                              isActive={currentPage === page}
+                              className="cursor-pointer"
+                            >
+                              {page}
+                            </PaginationLink>
+                          </PaginationItem>
+                        ))}
+                        <PaginationItem>
+                          <PaginationNext
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setCurrentPage((p) => Math.min(totalPages, p + 1));
+                            }}
+                            className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 

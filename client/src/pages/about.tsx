@@ -13,7 +13,7 @@ export default function About() {
         >
           <div className="space-y-6">
             <h1 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-foreground">
-              About Vik's Pizza
+              About CRUSTOPS
             </h1>
             
             <div className="prose prose-lg max-w-none space-y-6 text-foreground/90">
@@ -34,7 +34,7 @@ export default function About() {
               </p>
 
               <p className="text-lg leading-relaxed">
-                Vik's Pizza is pointing its laser-guided focus at pizza, and we're refactoring the entire experience.
+                CRUSTOPS is pointing its laser-guided focus at pizza, and we're refactoring the entire experience.
               </p>
 
               <p className="text-lg leading-relaxed">
@@ -67,7 +67,7 @@ export default function About() {
               </div>
 
               <p className="text-lg leading-relaxed pt-6 font-display font-bold text-primary text-xl">
-                At Vik's Pizza, we believe pizza should deploy flawlessly.
+                At CRUSTOPS, we believe pizza should deploy flawlessly.
               </p>
 
               <p className="text-lg leading-relaxed">

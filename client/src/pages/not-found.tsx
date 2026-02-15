@@ -18,7 +18,7 @@ export default function NotFound() {
           <div className="space-y-6 text-center">
             <div className="space-y-2">
               <h1 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-foreground">
-                🍕 Vik's Pizza 404 Error Page
+                🍕 CRUSTOPS 404 Error Page
               </h1>
               <p className="text-muted-foreground italic">
                 (Crust Not Found)
@@ -124,7 +124,7 @@ export default function NotFound() {
                     <p className="text-foreground/80 text-xs italic mt-2">
                       We promise to fix it before the next batch drops.
                     </p>
-                    <a href="mailto:privacy@vikspizza.com">
+                    <a href="mailto:privacy@crustops.com">
                       <Button variant="outline" className="w-full">
                         <FileText className="mr-2 h-4 w-4" />
                         Contact Us

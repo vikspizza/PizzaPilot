@@ -123,7 +123,7 @@ export default function Login() {
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-2xl font-display font-bold">
-              {step === "phone" ? "Sign in to Vik's Pizza" : "Verify your number"}
+              {step === "phone" ? "Sign in to CRUSTOPS" : "Verify your number"}
             </CardTitle>
             <CardDescription>
               {step === "phone" 

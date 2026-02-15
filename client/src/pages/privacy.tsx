@@ -14,7 +14,7 @@ export default function Privacy() {
           <div className="space-y-6">
             <div className="space-y-2">
               <h1 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-foreground">
-                🍕 Vik's Pizza Privacy Policy
+                🍕 CRUSTOPS Privacy Policy
               </h1>
               <p className="text-muted-foreground italic">
                 (Version 1.0 — Because privacy matters… almost as much as pizza.)
@@ -23,7 +23,7 @@ export default function Privacy() {
             
             <div className="prose prose-lg max-w-none space-y-6 text-foreground/90">
               <p className="text-lg leading-relaxed">
-                Welcome to Vik's Pizza.
+                Welcome to CRUSTOPS.
               </p>
 
               <p className="text-lg leading-relaxed">
@@ -172,7 +172,7 @@ export default function Privacy() {
                     <br />
                     Want your data removed or your pizza hotter?
                     <br />
-                    Email: <a href="mailto:privacy@vikspizza.com" className="text-primary hover:underline font-display font-bold">privacy@vikspizza.com</a>
+                    Email: <a href="mailto:privacy@crustops.com" className="text-primary hover:underline font-display font-bold">privacy@crustops.com</a>
                   </p>
                   <p className="text-lg leading-relaxed italic text-muted-foreground">
                     Or just shout loudly: "HEY, MY PREFERENCES!"

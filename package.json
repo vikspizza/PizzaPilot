@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev:client": "vite dev --port 5000",
-    "dev": "NODE_ENV=development tsx server/index.ts",
+    "dev": "NODE_ENV=development tsx watch server/index.ts",
     "dev:cf": "npm run build:cf && wrangler pages dev dist/public --compatibility-date=2024-01-01",
     "build": "tsx script/build.ts",
     "build:cf": "npm exec -- tsx script/build-cf.ts",

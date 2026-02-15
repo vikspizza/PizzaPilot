@@ -21,8 +21,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/" className="block">
             <div className={`max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-0 group cursor-pointer ${theme === "dark" ? "bg-background" : ""}`}>
               <img 
-                src={theme === "dark" ? "/attached_assets/generated_images/vikspizza_color7_1_dark.png" : "/attached_assets/generated_images/vikspizza_color7_light.png"} 
-                alt="Vik's Pizza" 
+                src={theme === "dark" ? "/attached_assets/generated_images/crustops_dark2.png" : "/attached_assets/generated_images/crustops_lt2.png"} 
+                alt="CRUSTOPS" 
                 className="w-4/5 h-auto object-contain transition-opacity duration-300 group-hover:opacity-80 mx-auto"
               />
             </div>
@@ -103,7 +103,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 container mx-auto px-4 py-8 md:py-12 relative z-10">
+      <main className="flex-1 container mx-auto px-4 pt-1 pb-8 md:pt-2 md:pb-12 relative z-10 pl-8 md:pl-14 lg:pl-20">
         {/* Code background - subtle and faded */}
         <div 
           className="fixed inset-0 pointer-events-none overflow-hidden"
@@ -142,11 +142,11 @@ return myPie.serve("First In, First Delicious");`}
       <footer className="border-t border-border/40 bg-card/30">
         <div className="container mx-auto px-4 py-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
           <div className="flex flex-col items-center md:items-start gap-1">
-            <span className="font-display font-bold text-foreground">VIK'S PIZZA</span>
+            <span className="font-display font-bold text-foreground">CRUSTOPS</span>
             <span>123 Dough Lane, Food District</span>
           </div>
           <div className="flex flex-wrap items-center gap-4 justify-center md:justify-end">
-            <span>© 2025 Vik's Pizza</span>
+            <span>© 2025 CRUSTOPS</span>
             <Link href="/privacy">
               <div className="hover:underline hover:text-primary transition-colors cursor-pointer">Privacy Policy</div>
             </Link>

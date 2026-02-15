@@ -48,32 +48,30 @@ export default function Home() {
   return (
     <Layout>
       {/* Hero Section */}
-      <section className="relative mb-16 md:mb-24 pt-8 md:pt-12">
-        <div className="max-w-4xl mx-auto text-center space-y-8">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="inline-flex flex-wrap items-center gap-2"
-          >
+      <section className="relative mb-16 md:mb-24 pt-0">
+        <div className="max-w-4xl mx-auto text-center space-y-6">
+          {/* Reserve height so content doesn't jump when "Accepting orders" appears */}
+          <div className="min-h-7 flex justify-center items-start">
             {currentBatch && (
-              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest border border-primary/20">
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest border border-primary/20"
+              >
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-700 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-700"></span>
                 </span>
                 Accepting orders
-              </span>
+              </motion.div>
             )}
-            <Link href="/past-experiments" className="text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors underline underline-offset-2">
-              Past experiments
-            </Link>
-          </motion.div>
-          
+          </div>
+
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="block mt-4 font-display font-bold text-xl text-primary mb-2"
+            className="block font-display font-bold text-xl text-primary mb-2"
           >
             Our pizza is a techie's best friend.... and yours too!
           </motion.p>
@@ -96,7 +94,7 @@ export default function Home() {
             transition={{ delay: 0.3 }}
             className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-xl mx-auto"
           >
-            We're <span className="font-bold text-foreground">Vik's Pizza</span>. An experimental test kitchen deploying limited batches of new pizza concepts every week. <span className="block mt-4 font-display font-bold text-xl text-primary">We offer amazing pizza in exchange for your brutally honest review.</span>
+            We're <span className="font-bold text-foreground">CRUSTOPS</span>. An experimental test kitchen deploying limited batches of new pizza concepts every week. <span className="block mt-4 font-display font-bold text-xl text-primary">We offer amazing pizza in exchange for your brutally honest review.</span>
           </motion.p>
 
           <motion.div 
@@ -105,6 +103,9 @@ export default function Home() {
             transition={{ delay: 0.35 }}
             className="pt-2"
           >
+            <Link href="/past-experiments" className="block text-sm text-muted-foreground hover:text-primary transition-colors underline underline-offset-4 mb-4">
+              Past experiments →
+            </Link>
             <Link href="/faqs">
               <span className="text-sm text-muted-foreground hover:text-primary transition-colors underline underline-offset-4 cursor-pointer">
                 Have questions? Check out our FAQs →
