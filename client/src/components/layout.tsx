@@ -12,14 +12,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setUser(api.getCurrentUser());
-  }, [location]); // Re-check user on navigation
+  }, [location]);
+
+  useEffect(() => {
+    const onUserLogin = () => setUser(api.getCurrentUser());
+    window.addEventListener("user-login", onUserLogin);
+    return () => window.removeEventListener("user-login", onUserLogin);
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-background font-sans selection:bg-primary/10">
       <header className={`border-b border-border/40 sticky top-0 z-50 ${theme === "dark" ? "bg-background" : "bg-background/80 backdrop-blur-sm"}`}>
         <div className="w-full">
-          <Link href="/" className="block">
-            <div className={`max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-0 group cursor-pointer ${theme === "dark" ? "bg-background" : ""}`}>
+          <Link href="/" className="block bg-transparent">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-0 group cursor-pointer bg-transparent">
               <img 
                 src={theme === "dark" ? "/attached_assets/generated_images/crustops_dark2.png" : "/attached_assets/generated_images/crustops_lt2.png"} 
                 alt="CRUSTOPS" 
@@ -70,9 +76,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             
             {user ? (
               <Link href="/profile">
-                <div className={`text-sm font-medium transition-colors hover:text-primary flex items-center gap-1.5 cursor-pointer ${location === "/profile" ? "text-primary" : "text-foreground/80"}`}>
-                  <User size={14} />
-                  Profile
+                <div className={`text-sm font-medium transition-colors hover:text-primary flex flex-col items-center justify-center gap-0.5 cursor-pointer min-w-[2.5rem] ${location === "/profile" ? "text-primary" : "text-foreground/80"}`}>
+                  <User size={14} aria-hidden />
+                  <span className="text-[11px] leading-tight font-medium max-w-[4rem] truncate" title={user.name}>
+                    {!user.name || user.name.trim() === "" || user.name === "Valued Customer"
+                      ? "Profile"
+                      : (user.name.trim().split(/\s+/)[0] || "Profile")}
+                  </span>
                 </div>
               </Link>
             ) : (

@@ -6,19 +6,28 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useLocation, Link } from "wouter";
 import { Loader2, LogOut, Package, User as UserIcon, MessageSquare } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Profile() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [isSavingName, setIsSavingName] = useState(false);
 
   useEffect(() => {
     setIsLoadingUser(true);
     const u = api.getCurrentUser();
     setUser(u);
+    if (u) {
+      const n = (u && "name" in u ? u.name : (u as Record<string, unknown>)?.name);
+      setEditName(typeof n === "string" ? n : "");
+    }
     setIsLoadingUser(false);
     if (!u) {
       setLocation("/login");
@@ -49,6 +58,30 @@ export default function Profile() {
     setLocation("/");
   };
 
+  const userName = (user && "name" in user ? user.name : (user as Record<string, unknown>)?.name) ?? "";
+  const needsName = !String(userName).trim() || String(userName).trim() === "Valued Customer";
+
+  const handleSaveName = async () => {
+    const name = editName.trim();
+    if (!name) {
+      toast({ title: "Name required", description: "Please enter your name.", variant: "destructive" });
+      return;
+    }
+    setIsSavingName(true);
+    try {
+      const updated = await api.updateUser(user.id, { name });
+      setUser(updated);
+      window.dispatchEvent(new CustomEvent("user-login"));
+      toast({ title: "Profile updated", description: "Your name has been saved." });
+      setTimeout(() => setLocation("/"), 400);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not save name.";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
   if (isLoadingUser || !user) {
     return (
       <Layout>
@@ -69,19 +102,56 @@ export default function Profile() {
           </Button>
         </div>
 
+        {needsName && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardHeader>
+              <CardTitle>Complete your profile</CardTitle>
+              <CardDescription>Add your name so we know who you are.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[200px] space-y-2">
+                <Label htmlFor="profile-name">Your name</Label>
+                <Input
+                  id="profile-name"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="e.g. Alex"
+                />
+              </div>
+              <Button onClick={handleSaveName} disabled={isSavingName || !editName.trim()}>
+                {isSavingName ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="md:col-span-1 h-fit">
             <CardHeader className="text-center">
               <div className="mx-auto mb-4">
                 <Avatar className="h-24 w-24">
                   <AvatarImage src={user.avatarUrl} />
-                  <AvatarFallback className="text-2xl">{user.name.charAt(0)}</AvatarFallback>
+                  <AvatarFallback className="text-2xl">{userName?.charAt(0) || "?"}</AvatarFallback>
                 </Avatar>
               </div>
-              <CardTitle>{user.name}</CardTitle>
+              <CardTitle>{userName || "Add your name"}</CardTitle>
               <CardDescription>{user.email || user.phone}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="profile-name-edit">Your name</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="profile-name-edit"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Enter your name"
+                  />
+                  <Button variant="outline" size="sm" onClick={handleSaveName} disabled={isSavingName || !editName.trim() || editName.trim() === userName}>
+                    {isSavingName ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                  </Button>
+                </div>
+              </div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-muted-foreground">Member Since</span>

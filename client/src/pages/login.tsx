@@ -107,9 +107,17 @@ export default function Login() {
   const handleVerifyOtp = async (values: z.infer<typeof otpSchema>) => {
     setIsLoading(true);
     try {
-      await api.verifyOtp(phoneNumber, values.code);
-      toast({ title: "Welcome back!", description: "You successfully logged in." });
-      setLocation("/");
+      const user = await api.verifyOtp(phoneNumber, values.code);
+      const name = (user && (user as { name?: string }).name) ?? "";
+      const isNewUser = !name.trim() || name.trim() === "Valued Customer";
+      window.dispatchEvent(new CustomEvent("user-login"));
+      if (isNewUser) {
+        toast({ title: "Welcome!", description: "Please add your name to complete your profile." });
+        setLocation("/profile");
+      } else {
+        toast({ title: "Welcome back!", description: "You successfully logged in." });
+        setLocation("/");
+      }
     } catch (error) {
       toast({ title: "Error", description: "Invalid code. Please try again.", variant: "destructive" });
     } finally {
