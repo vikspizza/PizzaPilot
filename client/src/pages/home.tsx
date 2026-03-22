@@ -53,17 +53,22 @@ export default function Home() {
           {/* Reserve height so content doesn't jump when "Accepting orders" appears */}
           <div className="min-h-7 flex justify-center items-start">
             {currentBatch && (
-              <motion.div 
+              <motion.a
+                href="#menu"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest border border-primary/20"
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById("menu")?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest border border-primary/20 cursor-pointer hover:bg-primary/20 transition-colors"
               >
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-700 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-700"></span>
                 </span>
                 Accepting orders
-              </motion.div>
+              </motion.a>
             )}
           </div>
 
@@ -94,7 +99,7 @@ export default function Home() {
             transition={{ delay: 0.3 }}
             className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-xl mx-auto"
           >
-            We're <span className="font-bold text-foreground">CRUSTOPS</span>. An experimental test kitchen deploying limited batches of new pizza concepts every week. <span className="block mt-4 font-display font-bold text-xl text-primary">We offer amazing pizza in exchange for your brutally honest review.</span>
+            We're <span className="font-bold text-foreground">Vik's Pizza</span>. An experimental test kitchen deploying limited batches of new pizza concepts every week. <span className="block mt-4 font-display font-bold text-xl text-primary">We offer amazing pizza in exchange for your brutally honest review.</span>
           </motion.p>
 
           <motion.div 
@@ -130,8 +135,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Menu Section */}
-      <section id="menu" className="space-y-12 max-w-4xl mx-auto">
+      {/* Menu Section - scroll-margin so it doesn't sit under the sticky header */}
+      <section id="menu" className="space-y-12 max-w-4xl mx-auto scroll-mt-32 md:scroll-mt-36">
         <div className="flex items-end justify-between border-b border-border/40 pb-4">
           <div>
             <h2 className="text-3xl font-display font-bold">Current Menu</h2>

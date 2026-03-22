@@ -1,14 +1,20 @@
 import { Link, useLocation } from "wouter";
-import { ShoppingBag, User, Sun, Moon } from "lucide-react";
+import { User, Sun, Moon } from "lucide-react";
 import { api } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { useTheme } from "@/hooks/use-theme";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [user, setUser] = useState<ReturnType<typeof api.getCurrentUser> | null>(null);
   const { theme, toggleTheme } = useTheme();
+  const { toast } = useToast();
+
+  const needsProfile =
+    user &&
+    (!String(user.name ?? "").trim() || String(user.name).trim() === "Valued Customer");
 
   useEffect(() => {
     setUser(api.getCurrentUser());
@@ -20,15 +26,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("user-login", onUserLogin);
   }, []);
 
+  useEffect(() => {
+    if (needsProfile && location !== "/profile") {
+      setLocation("/profile");
+    }
+  }, [needsProfile, location, setLocation]);
+
+  const blockIfNeedsProfile = (e: React.MouseEvent) => {
+    if (needsProfile) {
+      e.preventDefault();
+      toast({
+        title: "Complete your profile",
+        description: "Please add your name before visiting other pages.",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background font-sans selection:bg-primary/10">
       <header className={`border-b border-border/40 sticky top-0 z-50 ${theme === "dark" ? "bg-background" : "bg-background/80 backdrop-blur-sm"}`}>
         <div className="w-full">
-          <Link href="/" className="block bg-transparent">
+          <Link href="/" className="block bg-transparent" onClick={blockIfNeedsProfile}>
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-0 group cursor-pointer bg-transparent">
               <img 
-                src={theme === "dark" ? "/attached_assets/generated_images/crustops_dark2.png" : "/attached_assets/generated_images/crustops_lt2.png"} 
-                alt="CRUSTOPS" 
+                src={theme === "dark" ? "/attached_assets/generated_images/vikspizza_HTPC_dk.png" : "/attached_assets/generated_images/vikspizza_HTPC_lt.png"} 
+                alt="Vik's Pizza" 
                 className="w-4/5 h-auto object-contain transition-opacity duration-300 group-hover:opacity-80 mx-auto"
               />
             </div>
@@ -38,6 +60,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <a 
               href="/" 
               onClick={(e) => {
+                if (needsProfile) {
+                  e.preventDefault();
+                  toast({
+                    title: "Complete your profile",
+                    description: "Please add your name before visiting other pages.",
+                  });
+                  return;
+                }
                 e.preventDefault();
                 if (location === "/") {
                   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -52,6 +82,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <a 
               href="/#menu" 
               onClick={(e) => {
+                if (needsProfile) {
+                  e.preventDefault();
+                  toast({
+                    title: "Complete your profile",
+                    description: "Please add your name before visiting other pages.",
+                  });
+                  return;
+                }
                 e.preventDefault();
                 if (location === "/") {
                   document.getElementById("menu")?.scrollIntoView({ behavior: "smooth" });
@@ -63,12 +101,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               Menu
             </a>
-            <Link href="/about">
+            <Link href="/about" onClick={blockIfNeedsProfile}>
               <div className={`text-sm font-medium transition-colors hover:text-primary cursor-pointer ${location === "/about" ? "text-primary" : "text-foreground/80"}`}>
                 About
               </div>
             </Link>
-            <Link href="/faqs">
+            <Link href="/faqs" onClick={blockIfNeedsProfile}>
               <div className={`text-sm font-medium transition-colors hover:text-primary cursor-pointer ${location === "/faqs" ? "text-primary" : "text-foreground/80"}`}>
                 FAQs
               </div>
@@ -152,15 +190,15 @@ return myPie.serve("First In, First Delicious");`}
       <footer className="border-t border-border/40 bg-card/30">
         <div className="container mx-auto px-4 py-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
           <div className="flex flex-col items-center md:items-start gap-1">
-            <span className="font-display font-bold text-foreground">CRUSTOPS</span>
+            <span className="font-display font-bold text-foreground">VIK'S PIZZA</span>
             <span>123 Dough Lane, Food District</span>
           </div>
           <div className="flex flex-wrap items-center gap-4 justify-center md:justify-end">
-            <span>© 2025 CRUSTOPS</span>
-            <Link href="/privacy">
+            <span>© 2025 Vik's Pizza</span>
+            <Link href="/privacy" onClick={blockIfNeedsProfile}>
               <div className="hover:underline hover:text-primary transition-colors cursor-pointer">Privacy Policy</div>
             </Link>
-            <Link href="/admin">
+            <Link href="/admin" onClick={blockIfNeedsProfile}>
               <div className="hover:underline hover:text-primary transition-colors cursor-pointer">Admin Access</div>
             </Link>
           </div>

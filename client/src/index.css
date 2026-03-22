@@ -122,11 +122,11 @@
   body {
     @apply font-sans font-normal antialiased bg-background text-foreground selection:bg-primary/20;
   }
-  /* Headings use Space Grotesk Bold (matching "CRUSTOPS" in logo) */
+  /* Headings use Space Grotesk Bold (matching "VIK'S PIZZA" in logo) */
   h1, h2, h3, h4, h5, h6 {
     @apply font-display font-bold tracking-tight;
   }
-  /* Navigation links and labels use DM Sans Medium (matching "crustops.com" and "EST 2025" in logo) */
+  /* Navigation links and labels use DM Sans Medium (matching "vikspizza.com" in logo) */
   nav a, nav button, .nav-link, label, .label {
     @apply font-sans font-medium;
   }

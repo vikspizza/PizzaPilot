@@ -13,12 +13,12 @@ export default function About() {
         >
           <div className="space-y-6">
             <h1 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-foreground">
-              About CRUSTOPS
+              About Vik's Pizza
             </h1>
             
             <div className="prose prose-lg max-w-none space-y-6 text-foreground/90">
               <p className="text-lg leading-relaxed">
-                DevOps, software development, systems architecture, databases… you name the stack, I've debugged it.
+                DevOps, software development, systems architecture, databases… you name the stack, I've worked with it.
               </p>
 
               <p className="text-lg leading-relaxed">
@@ -34,11 +34,11 @@ export default function About() {
               </p>
 
               <p className="text-lg leading-relaxed">
-                CRUSTOPS is pointing its laser-guided focus at pizza, and we're refactoring the entire experience.
+                Vik's Pizza is hacking the pizza code, and we're refactoring the entire experience.
               </p>
 
               <p className="text-lg leading-relaxed">
-                We're here to make your everyday pie as awesome as you want your code to be — clean, elegant, efficient, and shockingly delicious.
+                We're here to make your everyday pie as awesome as you want your code to be — clean, elegant, and shockingly delicious.
               </p>
 
               <div className="space-y-4 pt-4">
@@ -57,7 +57,7 @@ export default function About() {
                   </li>
                   <li className="flex items-start gap-3">
                     <span className="text-primary font-bold mt-1">•</span>
-                    <span className="text-lg leading-relaxed">A texture light and airy enough to avoid a food coma before that code-review</span>
+                    <span className="text-lg leading-relaxed">A texture light and airy enough to avoid a food coma before that code-marathon</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <span className="text-primary font-bold mt-1">•</span>
@@ -67,7 +67,7 @@ export default function About() {
               </div>
 
               <p className="text-lg leading-relaxed pt-6 font-display font-bold text-primary text-xl">
-                At CRUSTOPS, we believe pizza should deploy flawlessly.
+                At Vik's Pizza, we believe pizza should deploy flawlessly and eat deliciously.
               </p>
 
               <p className="text-lg leading-relaxed">
