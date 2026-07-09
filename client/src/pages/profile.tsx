@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useLocation, Link } from "wouter";
 import { Loader2, LogOut, Package, User as UserIcon, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { formatPickupTime } from "@/lib/pacific-time";
 
 export default function Profile() {
   const [, setLocation] = useLocation();
@@ -36,8 +37,8 @@ export default function Profile() {
   }, [setLocation]);
 
   const { data: orders } = useQuery({
-    queryKey: ["my-orders", user?.id],
-    queryFn: () => user ? api.getOrders(user.id) : Promise.resolve([]),
+    queryKey: ["my-orders", user?.phone],
+    queryFn: () => user ? api.getOrders(user.phone) : Promise.resolve([]),
     enabled: !!user,
   });
 
@@ -84,7 +85,7 @@ export default function Profile() {
 
   if (isLoadingUser || !user) {
     return (
-      <Layout>
+      <Layout basicLogo>
         <div className="flex justify-center py-24">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -93,7 +94,7 @@ export default function Profile() {
   }
 
   return (
-    <Layout>
+    <Layout basicLogo>
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-display font-bold">My Profile</h1>
@@ -200,7 +201,10 @@ export default function Profile() {
                              </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground mb-2">
-                            Ordered on {new Date(order.date).toLocaleDateString()} at {order.timeSlot}
+                            Ordered on {new Date(order.date).toLocaleDateString()} at{" "}
+                            {order.pickupSlot
+                              ? formatPickupTime(order.pickupSlot.pickupTime)
+                              : "—"}
                           </p>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                              <Badge variant="outline" className="uppercase text-[10px]">{order.type}</Badge>

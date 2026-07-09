@@ -36,6 +36,12 @@ lerna-debug.log*
 .dev.vars
 .dev.vars.local
 
+# Secrets & keys
+*.pem
+*.key
+*.p12
+credentials.json
+
 # Database
 *.db
 *.sqlite

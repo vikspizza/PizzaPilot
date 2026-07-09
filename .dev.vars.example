@@ -1,7 +1,10 @@
 # Cloudflare Pages Functions Local Development Variables
 # Copy this file to .dev.vars and fill in your values
 # .dev.vars is gitignored and used by Wrangler for local testing
+# See SECURITY.md for rotation and secret handling.
 
 DATABASE_URL=postgresql://user:password@host.neon.tech/dbname?sslmode=require
 
+# Optional: admin kitchen password (never commit a real value)
+ADMIN_PASSWORD=change-me
 

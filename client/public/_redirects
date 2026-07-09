@@ -1,0 +1,6 @@
+# Recover from legacy Wrangler redirects that sent SPA routes to /app
+/app        /admin/     301
+/app/       /admin/     301
+
+# Dynamic review URLs (no physical shell per order id)
+/review/*   /app.html   200

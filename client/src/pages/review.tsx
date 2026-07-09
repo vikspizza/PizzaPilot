@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { formatPickupTime } from "@/lib/pacific-time";
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -237,7 +238,12 @@ export default function Review() {
                   <h3 className="font-display font-bold text-lg">{pizza.name}</h3>
                   <p className="text-sm text-muted-foreground mt-1">{pizza.description}</p>
                   <div className="mt-2 text-xs text-muted-foreground">
-                    <p>Ordered on {new Date(order.date).toLocaleDateString()} at {order.timeSlot}</p>
+                    <p>
+                      Ordered on {new Date(order.date).toLocaleDateString()} at{" "}
+                      {order.pickupSlot
+                        ? formatPickupTime(order.pickupSlot.pickupTime)
+                        : "—"}
+                    </p>
                     <p>Quantity: {order.quantity}</p>
                   </div>
                 </div>

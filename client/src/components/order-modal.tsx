@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { type Pizza, api, type Settings, type Batch, type BatchPizza } from "@/lib/api";
+import { type Pizza, api, type Batch, type BatchPizza, type PickupSlot } from "@/lib/api";
+import { comparePickupTime, formatPickupTime } from "@/lib/pacific-time";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, format, isThursday, isFriday, isSaturday, setHours, setMinutes, isAfter, startOfDay } from "date-fns";
 import { Loader2, ShoppingBag, Bike, Store } from "lucide-react";
@@ -26,7 +27,7 @@ const formSchema = z.object({
   quantity: z.number().int().min(1, "Must order at least 1").max(5, "Maximum 5 pizzas per order"),
   type: z.enum(["pickup", "delivery"]),
   date: z.string({ required_error: "Please select a date" }),
-  timeSlot: z.string({ required_error: "Please select a time" }),
+  slotId: z.string().uuid({ message: "Please select a time" }),
 });
 
 interface OrderModalProps {
@@ -40,7 +41,6 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
   const [, setLocation] = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [availableDates, setAvailableDates] = useState<Date[]>([]);
-  const [settings, setSettings] = useState<Settings | null>(null);
   const [user, setUser] = useState<ReturnType<typeof api.getCurrentUser> | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
   const [batchPizzas, setBatchPizzas] = useState<BatchPizza[]>([]);
@@ -53,6 +53,26 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
     enabled: isOpen,
   });
 
+  const { data: pickupSlots = [], isLoading: pickupSlotsLoading } = useQuery({
+    queryKey: ["pickup-slots", selectedBatch?.slotListId],
+    queryFn: () =>
+      selectedBatch?.slotListId
+        ? api.getPickupSlots(selectedBatch.slotListId)
+        : Promise.resolve([]),
+    enabled: isOpen && !!selectedBatch?.slotListId,
+  });
+
+  const { data: bookedSlotIds = [], isLoading: bookedSlotsLoading } = useQuery({
+    queryKey: ["booked-slots", selectedBatch?.id],
+    queryFn: () =>
+      selectedBatch?.id
+        ? api.getBookedSlotIds(selectedBatch.id)
+        : Promise.resolve([]),
+    enabled: isOpen && !!selectedBatch?.id,
+  });
+
+  const bookedSlotIdSet = new Set(bookedSlotIds);
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -62,7 +82,7 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
       quantity: 1,
       type: "pickup",
       date: "",
-      timeSlot: "",
+      slotId: "",
     },
   });
 
@@ -77,7 +97,7 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
         quantity: 1,
         type: "pickup",
         date: "",
-        timeSlot: "",
+        slotId: "",
       });
       
       // Reset batch-related state
@@ -94,7 +114,7 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
         form.setValue("customerPhone", u.phone);
         
         // Check for pending reviews
-        api.getPendingReviews(u.id).then(pending => {
+        api.getPendingReviews(u.phone).then(pending => {
           if (pending.length > 0) {
             toast({
               title: "Review Required",
@@ -108,10 +128,6 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
           // Silently fail if check doesn't work
         });
       }
-
-      api.getSettings().then(s => {
-        setSettings(s);
-      });
     }
   }, [isOpen, onClose, setLocation, toast, form]);
 
@@ -154,7 +170,7 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
       if (currentDate && !batchDateStrings.includes(currentDate)) {
         console.log("OrderModal: Resetting invalid date", currentDate, "to", batchDateStrings[0]);
         form.setValue("date", batchDateStrings[0] || "");
-        form.setValue("timeSlot", ""); // Also reset time slot
+        form.setValue("slotId", ""); // Also reset pickup slot
       } else if (!currentDate && batchDateStrings.length > 0) {
         // Auto-select first available date if none selected
         console.log("OrderModal: Auto-selecting first date", batchDateStrings[0]);
@@ -164,12 +180,27 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
       // No batches available
       setAvailableDates([]);
       form.setValue("date", "");
-      form.setValue("timeSlot", "");
+      form.setValue("slotId", "");
     }
   }, [isOpen, batches, form]);
 
-  // Watch for date changes and find matching batch
   const selectedDate = form.watch("date");
+  const availableSlots = [...pickupSlots].sort((a, b) =>
+    comparePickupTime(a.pickupTime, b.pickupTime),
+  );
+
+  useEffect(() => {
+    const currentSlotId = form.getValues("slotId");
+    if (
+      currentSlotId &&
+      (!availableSlots.some((slot) => slot.slotId === currentSlotId) ||
+        bookedSlotIds.includes(currentSlotId))
+    ) {
+      form.setValue("slotId", "");
+    }
+  }, [availableSlots, bookedSlotIds, form]);
+
+  // Watch for date changes and find matching batch
   useEffect(() => {
     // Reset state when date changes
     setSelectedBatch(null);
@@ -261,7 +292,6 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
       await api.createOrder({
         ...values,
         pizzaId: pizza.id,
-        userId: user?.id,
         batchId: selectedBatch?.id,
       });
       toast({
@@ -282,22 +312,6 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
   };
 
   if (!pizza) return null;
-
-  // Generate time slots based on batch or settings
-  const timeSlots: string[] = [];
-  if (selectedBatch) {
-    // Use batch service hours
-    for (let i = selectedBatch.serviceStartHour; i < selectedBatch.serviceEndHour; i++) {
-      timeSlots.push(`${i}:00`);
-      timeSlots.push(`${i}:30`);
-    }
-  } else if (settings) {
-    // Fallback to settings
-    for (let i = settings.serviceStartHour; i < settings.serviceEndHour; i++) {
-      timeSlots.push(`${i}:00`);
-      timeSlots.push(`${i}:30`);
-    }
-  }
 
   // Check if pizza is available in selected batch
   const isPizzaInBatch = selectedBatch ? batchPizzas.some(bp => bp.pizzaId === pizza.id) : true;
@@ -443,22 +457,31 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
 
               <FormField
                 control={form.control}
-                name="timeSlot"
+                name="slotId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Time</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select time" />
+                          <SelectValue placeholder={pickupSlotsLoading ? "Loading times..." : "Select time"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {timeSlots.map((time) => (
-                          <SelectItem key={time} value={time}>
-                            {time}
-                          </SelectItem>
-                        ))}
+                        {availableSlots.map((slot) => {
+                          const isBooked = bookedSlotIdSet.has(slot.slotId);
+                          return (
+                            <SelectItem
+                              key={slot.slotId}
+                              value={slot.slotId}
+                              disabled={isBooked}
+                              className={isBooked ? "text-muted-foreground opacity-50" : undefined}
+                            >
+                              {formatPickupTime(slot.pickupTime)}
+                              {isBooked ? " (Taken)" : ""}
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -519,9 +542,13 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
                 disabled={
                   isSubmitting || 
                   batchesLoading ||
+                  pickupSlotsLoading ||
+                  bookedSlotsLoading ||
                   !selectedBatch || 
                   !selectedDate || 
-                  !form.getValues("timeSlot") ||
+                  !form.getValues("slotId") ||
+                  availableSlots.length === 0 ||
+                  availableSlots.every((slot) => bookedSlotIdSet.has(slot.slotId)) ||
                   (selectedBatch && (!isPizzaInBatch || !isAvailable))
                 }
               >

@@ -1,6 +1,6 @@
 // Cloudflare-specific storage (uses db-cf instead of db)
 // This avoids importing db.ts which has pg (Node.js) dependencies
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, desc, asc, notInArray } from "drizzle-orm";
 import * as schema from "@shared/schema";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import type {
@@ -10,6 +10,9 @@ import type {
   InsertPizza,
   Order,
   InsertOrder,
+  OrderWithCustomer,
+  Customer,
+  InsertCustomer,
   Review,
   InsertReview,
   Settings,
@@ -20,7 +23,21 @@ import type {
   InsertBatch,
   BatchPizza,
   InsertBatchPizza,
+  SlotList,
+  InsertSlotList,
+  PickupSlot,
+  InsertPickupSlot,
 } from "@shared/schema";
+import {
+  getCustomerById as fetchCustomerById,
+  getCustomerByPhone as fetchCustomerByPhone,
+  selectOrderWithCustomerById,
+  selectOrdersWithCustomer,
+  selectOrdersWithCustomerByDate,
+  selectOrdersWithCustomerByCustomerPhone,
+  getBookedSlotIds as fetchBookedSlotIds,
+  upsertCustomer as upsertCustomerRecord,
+} from "./order-storage";
 
 // Re-implement DatabaseStorage using Cloudflare-compatible db
 // This is identical to storage.ts but uses db-cf instead of db
@@ -50,6 +67,19 @@ class DatabaseStorage {
       .where(eq(schema.users.id, id))
       .returning();
     return updated;
+  }
+
+  // Customers
+  async getCustomerById(id: string): Promise<Customer | undefined> {
+    return fetchCustomerById(this.db, id);
+  }
+
+  async getCustomerByPhone(phone: string): Promise<Customer | undefined> {
+    return fetchCustomerByPhone(this.db, phone);
+  }
+
+  async upsertCustomer(customer: InsertCustomer): Promise<Customer> {
+    return upsertCustomerRecord(this.db, customer);
   }
 
   // OTP
@@ -105,43 +135,45 @@ class DatabaseStorage {
   }
 
   // Orders
-  async getOrders(): Promise<Order[]> {
-    return this.db.select().from(schema.orders).orderBy(schema.orders.createdAt);
+  async getOrders(): Promise<OrderWithCustomer[]> {
+    return selectOrdersWithCustomer(this.db);
   }
 
-  async getOrdersByUserId(userId: string): Promise<Order[]> {
-    return this.db
-      .select()
-      .from(schema.orders)
-      .where(eq(schema.orders.userId, userId))
-      .orderBy(schema.orders.createdAt);
+  async getOrdersByCustomerPhone(phone: string): Promise<OrderWithCustomer[]> {
+    return selectOrdersWithCustomerByCustomerPhone(this.db, phone);
   }
 
-  async getOrderById(id: string): Promise<Order | undefined> {
-    const [order] = await this.db.select().from(schema.orders).where(eq(schema.orders.id, id));
-    return order;
+  async getOrderById(id: string): Promise<OrderWithCustomer | undefined> {
+    return selectOrderWithCustomerById(this.db, id);
   }
 
-  async getOrdersByDate(date: string): Promise<Order[]> {
-    return this.db
-      .select()
-      .from(schema.orders)
-      .where(eq(schema.orders.date, date))
-      .orderBy(schema.orders.timeSlot);
+  async getOrdersByDate(date: string): Promise<OrderWithCustomer[]> {
+    return selectOrdersWithCustomerByDate(this.db, date);
   }
 
-  async createOrder(order: InsertOrder): Promise<Order> {
+  async getBookedSlotIds(batchId: string | null | undefined, date: string): Promise<string[]> {
+    return fetchBookedSlotIds(this.db, { batchId, date });
+  }
+
+  async createOrder(order: InsertOrder): Promise<OrderWithCustomer> {
     const [newOrder] = await this.db.insert(schema.orders).values(order).returning();
-    return newOrder;
+    const created = await selectOrderWithCustomerById(this.db, newOrder.id);
+    if (!created) {
+      throw new Error("Failed to load order after create");
+    }
+    return created;
   }
 
-  async updateOrderStatus(id: string, status: string): Promise<Order | undefined> {
+  async updateOrderStatus(id: string, status: string): Promise<OrderWithCustomer | undefined> {
     const [updated] = await this.db
       .update(schema.orders)
       .set({ status })
       .where(eq(schema.orders.id, id))
       .returning();
-    return updated;
+    if (!updated) {
+      return undefined;
+    }
+    return selectOrderWithCustomerById(this.db, updated.id);
   }
 
   // Reviews
@@ -165,18 +197,15 @@ class DatabaseStorage {
     return review;
   }
 
-  async getPendingReviewsByUserId(userId: string): Promise<Order[]> {
-    // Get orders that are delivered/completed but don't have reviews
-    const orders = await this.getOrdersByUserId(userId);
-    const reviews = await this.db
-      .select()
-      .from(schema.reviews);
-    
-    const reviewedOrderIds = new Set(reviews.map(r => r.orderId));
+  async getPendingReviewsByCustomerPhone(phone: string): Promise<OrderWithCustomer[]> {
+    const orders = await this.getOrdersByCustomerPhone(phone);
+    const reviews = await this.db.select().from(schema.reviews);
+
+    const reviewedOrderIds = new Set(reviews.map((r) => r.orderId));
     return orders.filter(
-      order => 
+      (order) =>
         (order.status === "delivered" || order.status === "completed") &&
-        !reviewedOrderIds.has(order.id)
+        !reviewedOrderIds.has(order.id),
     );
   }
 
@@ -261,7 +290,7 @@ class DatabaseStorage {
   }
 
   // Batch Pizzas
-  async getBatchPizzas(batchId: string): Promise<(BatchPizza & { pizza: Pizza })[]> {
+  async getBatchPizzas(batchId: string): Promise<(BatchPizza & { pizza: Pizza; available: number })[]> {
     const results = await this.db
       .select({
         id: schema.batchPizzas.id,
@@ -284,14 +313,17 @@ class DatabaseStorage {
       .innerJoin(schema.pizzas, eq(schema.batchPizzas.pizzaId, schema.pizzas.id))
       .where(eq(schema.batchPizzas.batchId, batchId));
 
-    return results.map((r) => ({
-      id: r.id,
-      batchId: r.batchId,
-      pizzaId: r.pizzaId,
-      maxQuantity: r.maxQuantity,
-      createdAt: r.createdAt,
-      pizza: r.pizza,
-    }));
+    return Promise.all(
+      results.map(async (r) => ({
+        id: r.id,
+        batchId: r.batchId,
+        pizzaId: r.pizzaId,
+        maxQuantity: r.maxQuantity,
+        createdAt: r.createdAt,
+        pizza: r.pizza,
+        available: await this.getAvailableQuantity(batchId, r.pizzaId),
+      })),
+    );
   }
 
   async getBatchPizza(batchId: string, pizzaId: string): Promise<BatchPizza | undefined> {
@@ -334,19 +366,20 @@ class DatabaseStorage {
     const batchPizza = await this.getBatchPizza(batchId, pizzaId);
     if (!batchPizza) return 0;
 
-    // Get total quantity ordered for this pizza in this batch
-    const orders = await this.db
-      .select()
+    const [result] = await this.db
+      .select({
+        total: sql<number>`coalesce(sum(${schema.orders.quantity}), 0)::int`,
+      })
       .from(schema.orders)
       .where(
         and(
           eq(schema.orders.batchId, batchId),
           eq(schema.orders.pizzaId, pizzaId),
-          sql`${schema.orders.status} NOT IN ('cancelled')`
-        )
+          notInArray(schema.orders.status, ["cancelled"]),
+        ),
       );
-    
-    const orderedQuantity = orders.reduce((sum, order) => sum + order.quantity, 0);
+
+    const orderedQuantity = Number(result?.total ?? 0);
     return Math.max(0, batchPizza.maxQuantity - orderedQuantity);
   }
 
@@ -375,6 +408,76 @@ class DatabaseStorage {
     return Array.from(byPizzaId.values())
       .map(({ pizza, count }) => ({ ...pizza, offerCount: count }))
       .sort((a, b) => b.offerCount - a.offerCount);
+  }
+
+  // Slot lists
+  async getSlotLists(): Promise<SlotList[]> {
+    return this.db
+      .select()
+      .from(schema.slotLists)
+      .orderBy(desc(schema.slotLists.createdAt));
+  }
+
+  async getSlotListById(id: string): Promise<SlotList | undefined> {
+    const [slotList] = await this.db
+      .select()
+      .from(schema.slotLists)
+      .where(eq(schema.slotLists.slotListId, id));
+    return slotList;
+  }
+
+  async createSlotList(slotList: InsertSlotList): Promise<SlotList> {
+    if (slotList.activeYorn) {
+      await this.db.update(schema.slotLists).set({ activeYorn: false });
+    }
+    const [created] = await this.db.insert(schema.slotLists).values(slotList).returning();
+    return created;
+  }
+
+  async updateSlotList(id: string, slotList: Partial<InsertSlotList>): Promise<SlotList | undefined> {
+    if (slotList.activeYorn) {
+      await this.db.update(schema.slotLists).set({ activeYorn: false });
+    }
+    const [updated] = await this.db
+      .update(schema.slotLists)
+      .set(slotList)
+      .where(eq(schema.slotLists.slotListId, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSlotList(id: string): Promise<void> {
+    await this.db.delete(schema.slotLists).where(eq(schema.slotLists.slotListId, id));
+  }
+
+  // Pickup slots
+  async getActivePickupSlots(): Promise<PickupSlot[]> {
+    const [activeList] = await this.db
+      .select()
+      .from(schema.slotLists)
+      .where(eq(schema.slotLists.activeYorn, true))
+      .limit(1);
+    if (!activeList) {
+      return [];
+    }
+    return this.getPickupSlots(activeList.slotListId);
+  }
+
+  async getPickupSlots(slotListId: string): Promise<PickupSlot[]> {
+    return this.db
+      .select()
+      .from(schema.pickupSlots)
+      .where(eq(schema.pickupSlots.slotListId, slotListId))
+      .orderBy(asc(schema.pickupSlots.pickupTime));
+  }
+
+  async createPickupSlot(pickupSlot: InsertPickupSlot): Promise<PickupSlot> {
+    const [created] = await this.db.insert(schema.pickupSlots).values(pickupSlot).returning();
+    return created;
+  }
+
+  async deletePickupSlot(slotId: string): Promise<void> {
+    await this.db.delete(schema.pickupSlots).where(eq(schema.pickupSlots.slotId, slotId));
   }
 }
 

@@ -1,172 +1,77 @@
 # Quick Start Guide
 
-## 🚀 Two Ways to Run Locally
+## Run locally (Wrangler)
 
-### Option 1: Docker (Recommended for Daily Development)
-
-```bash
-# Start everything
-docker compose up -d
-
-# App runs at http://localhost:5000
-# Full Express server with hot reload
-```
-
-**Use Docker when:**
-- Developing new features
-- Debugging issues
-- Testing full-stack functionality
-- You want fast iteration
-
-### Option 2: Wrangler (Cloudflare Testing)
+This project targets **Cloudflare Pages + Functions**. Local development uses Wrangler with a Neon database.
 
 ```bash
-# 1. Build for Cloudflare
-npm run build:cf
-
-# 2. Create .dev.vars (one-time setup)
-cp .dev.vars.example .dev.vars
-# Edit .dev.vars with your Neon DATABASE_URL
-
-# 3. Start Wrangler dev server
-npm run dev:cf
-# Or: npx wrangler pages dev dist/public --compatibility-date=2024-01-01
-
-# App runs at http://localhost:8788
-```
-
-**Use Wrangler when:**
-- Testing before deployment
-- Verifying Cloudflare Functions work
-- Ensuring production compatibility
-- Debugging Cloudflare-specific issues
-
-## 📦 First-Time Setup
-
-### 1. Install Dependencies
-```bash
+# 1. Install dependencies
 npm install
-```
 
-### 2. Setup Database
+# 2. Environment (one-time)
+cp .dev.vars.example .dev.vars
+# Edit .dev.vars — set DATABASE_URL to your Neon connection string
 
-**Option A: Neon DB (Recommended for Cloudflare)**
-
-1. Create a Neon database at [neon.tech](https://neon.tech) (free tier available)
-2. Get your connection string from the Neon dashboard
-3. Run the schema:
-
-```bash
-# Option 1: Use the SQL file directly (easiest)
-# Copy schema.sql and run it in Neon's SQL Editor
-
-# Option 2: Use Drizzle push
+# 3. Push schema (one-time or after schema changes)
 export DATABASE_URL="your-neon-connection-string"
 npm run db:push
+npm run seed   # optional
 
-# Seed data (optional)
-npm run seed
-```
-
-**Option B: Docker (Local PostgreSQL)**
-
-```bash
-# Start Docker
-docker compose up -d
-
-# Push schema
-docker compose exec app npm run db:push
-
-# Seed data (optional)
-docker compose exec app npm run seed
-```
-
-### 3. Setup Cloudflare Testing (Optional)
-```bash
-# Install Wrangler (if not already installed)
-npm install -g wrangler
-
-# Create .dev.vars file
-cp .dev.vars.example .dev.vars
-# Edit .dev.vars with your Neon DATABASE_URL
-
-# Login to Cloudflare (for deployments)
-wrangler login
-```
-
-## 🎯 Daily Workflow
-
-### Development (Docker)
-```bash
-docker compose up -d
-# Make changes, test at http://localhost:5000
-```
-
-### Pre-Deployment Testing (Wrangler)
-```bash
-npm run build:cf
+# 4. Build and run
 npm run dev:cf
-# Test at http://localhost:8788
 ```
 
-### Deploy to Cloudflare
+App runs at the URL Wrangler prints (often `http://localhost:8788`).
+
+## Deploy to Cloudflare
+
 ```bash
-# Option A: Git push (auto-deploys)
+# Git push (if Pages is connected to your repo)
 git push origin main
 
-# Option B: Manual deploy
+# Or manual deploy
 npm run deploy:cf
 ```
 
-## 🔑 Environment Variables
+Set `DATABASE_URL` as a **Secret** in Cloudflare Pages → Settings → Environment variables.
 
-**Docker:** Set in `docker-compose.yml` or `.env`
+## Environment variables
 
-**Wrangler:** Set in `.dev.vars` file
+| Where | File / place |
+|-------|----------------|
+| Local Wrangler | `.dev.vars` |
+| Cloudflare Pages | Dashboard → Environment variables (Secret) |
 
-**Cloudflare:** Set in Cloudflare Dashboard > Pages > Settings > Environment variables
+Required: `DATABASE_URL` (Neon connection string with `?sslmode=require`).
 
-All need: `DATABASE_URL` (your Neon connection string)
+## Optional: Express dev server
 
-## ❓ Which Should I Use?
+For a Node/Express + Vite workflow (not Cloudflare runtime):
 
-| Scenario | Use |
-|----------|-----|
-| Daily coding | Docker |
-| Adding features | Docker |
-| Debugging | Docker |
-| Before deploying | Wrangler |
-| Testing Functions | Wrangler |
-| Production | Cloudflare Pages |
-
-## 🆘 Troubleshooting
-
-**Docker not starting?**
 ```bash
-docker compose down
-docker compose up -d
-docker compose logs app
+export DATABASE_URL="your-neon-connection-string"
+npm run dev
 ```
 
-**Wrangler errors?**
+Use `http://localhost:5000`. Prefer `npm run dev:cf` when testing what runs on Pages.
+
+## Troubleshooting
+
+**Wrangler errors**
+
 ```bash
-# Check .dev.vars exists and has DATABASE_URL
 cat .dev.vars
-
-# Clear Wrangler cache
 rm -rf .wrangler
+npm run build:cf && npm run dev:cf
 ```
 
-**Database connection issues?**
-- Verify `DATABASE_URL` is correct
-- Check Neon dashboard for connection status
-- For Neon: Ensure SSL mode is enabled (`?sslmode=require` in connection string)
-- For Docker: Check that PostgreSQL container is running: `docker compose ps`
+**Database**
 
-## 📚 More Info
+- Confirm `DATABASE_URL` in Neon dashboard
+- Run `npm run db:push` after schema changes
 
-- **Full workflow**: See `WORKFLOW.md`
-- **Deployment guide**: See `CF_DEPLOYMENT.md`
-- **Cloudflare docs**: See `README_CLOUDFLARE.md`
+## More info
 
-
+- `WORKFLOW.md` — development and deployment flow
+- `CF_DEPLOYMENT.md` — Cloudflare deployment details
+- `README_CLOUDFLARE.md` — architecture overview

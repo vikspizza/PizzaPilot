@@ -9,7 +9,7 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Use Neon serverless for Cloudflare Workers/Pages Functions
-// Use regular Pool for Node.js environments (Docker, local dev)
+// Use regular Pool for Node.js environments (Express local dev)
 // Check for Cloudflare environment via USE_NEON env var or runtime detection
 const useNeon = process.env.USE_NEON === "true" || 
                 (typeof globalThis !== "undefined" && 
@@ -23,7 +23,7 @@ if (useNeon) {
   const sql = neon(process.env.DATABASE_URL);
   db = drizzle({ client: sql, schema });
 } else {
-  // Node.js environment (development, Docker, etc.) - use Pool
+  // Node.js environment (Express dev, etc.) - use Pool
   // Lazy import to avoid bundling pg in Cloudflare
   const pgModule = require("pg");
   const { Pool } = pgModule;

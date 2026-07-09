@@ -6,12 +6,9 @@ pages_build_output_dir = "dist/public"
 [env.production]
 vars = { NODE_ENV = "production" }
 
-[env.production.secrets]
-DATABASE_URL = ""
-
 [env.preview]
 vars = { NODE_ENV = "preview" }
 
-[env.preview.secrets]
-DATABASE_URL = ""
-
+# Secrets (DATABASE_URL, etc.) are NOT stored in this file.
+# Local:  .dev.vars (gitignored)
+# Cloudflare: wrangler pages secret put DATABASE_URL

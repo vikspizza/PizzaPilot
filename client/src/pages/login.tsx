@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Layout } from "@/components/layout";
+import { LandingHomeLink } from "@/components/landing-home-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -116,7 +117,7 @@ export default function Login() {
         setLocation("/profile");
       } else {
         toast({ title: "Welcome back!", description: "You successfully logged in." });
-        setLocation("/");
+        window.location.href = "/";
       }
     } catch (error) {
       toast({ title: "Error", description: "Invalid code. Please try again.", variant: "destructive" });
@@ -126,7 +127,7 @@ export default function Login() {
   };
 
   return (
-    <Layout>
+    <Layout basicLogo>
       <div className="flex items-center justify-center min-h-[60vh] py-12">
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1 text-center">
@@ -171,7 +172,8 @@ export default function Login() {
               />
             )}
           </CardContent>
-          <CardFooter>
+          <CardFooter className="flex flex-col gap-3">
+             <LandingHomeLink className="text-center" />
              <p className="text-xs text-center text-muted-foreground w-full">
                By continuing, you agree to our{" "}
                <Link href="/privacy">

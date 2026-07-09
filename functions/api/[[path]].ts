@@ -2,9 +2,18 @@
 // This avoids importing db.ts which has pg dependencies
 import { DatabaseStorage } from "../../server/storage-cf";
 import { getDb } from "../../server/db-cf";
-import { insertPizzaSchema, insertOrderSchema, insertReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema } from "../../shared/schema";
+import { insertPizzaSchema, insertOrderSchema, insertReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema, insertSlotListSchema, insertPickupSlotSchema, createOrderRequestSchema } from "../../shared/schema";
 import { z } from "zod";
 import { sendSms } from "../../server/sms";
+import { getTryPieContext } from "../../server/try-pie-context";
+import { normalizePickupTime } from "../../shared/pickup-time";
+import {
+  createAdminToken,
+  getBearerToken,
+  verifyAdminPassword,
+  verifyAdminToken,
+} from "../../shared/admin-auth";
+import { requiresAdminAuth } from "../../shared/requires-admin-auth";
 
 // Helper to create JSON response
 function jsonResponse(data: any, status = 200) {
@@ -55,6 +64,30 @@ export async function onRequest(context: any) {
   const storage = new DatabaseStorage(db);
 
   try {
+    if (path === "/api/admin/login" && method === "POST") {
+      const body = await parseBody(request);
+      const password = String(body.password ?? "");
+      const expected = env.ADMIN_PASSWORD;
+
+      if (!expected) {
+        return jsonResponse({ error: "Admin access is not configured" }, 503);
+      }
+
+      if (!verifyAdminPassword(password, expected)) {
+        return jsonResponse({ error: "Invalid password" }, 401);
+      }
+
+      const token = await createAdminToken(expected);
+      return jsonResponse({ token });
+    }
+
+    if (requiresAdminAuth(method, path, url.searchParams)) {
+      const token = getBearerToken(request.headers.get("Authorization"));
+      if (!(await verifyAdminToken(token, env.ADMIN_PASSWORD))) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+      }
+    }
+
     // Health check
     if (path === "/api/health" && method === "GET") {
       return jsonResponse({ status: "ok" });
@@ -192,24 +225,36 @@ export async function onRequest(context: any) {
 
     // ===== ORDERS =====
     if (path === "/api/orders" && method === "GET") {
-      const userId = url.searchParams.get("userId");
-      const orders = userId
-        ? await storage.getOrdersByUserId(userId)
+      const phone = url.searchParams.get("phone");
+      const orders = phone
+        ? await storage.getOrdersByCustomerPhone(phone)
         : await storage.getOrders();
       return jsonResponse(orders);
     }
 
     if (path === "/api/orders" && method === "POST") {
       const body = await parseBody(request);
-      const order = insertOrderSchema.parse(body);
+      const orderRequest = createOrderRequestSchema.parse(body);
+      const customer = await storage.upsertCustomer({
+        phone: orderRequest.customerPhone,
+        name: orderRequest.customerName,
+        email: orderRequest.customerEmail,
+      });
+      const order = insertOrderSchema.parse({
+        batchId: orderRequest.batchId ?? undefined,
+        customerId: customer.id,
+        pizzaId: orderRequest.pizzaId,
+        quantity: orderRequest.quantity,
+        type: orderRequest.type,
+        date: orderRequest.date,
+        slotId: orderRequest.slotId,
+      });
       
-      if (order.userId) {
-        const pendingReviews = await storage.getPendingReviewsByUserId(order.userId);
-        if (pendingReviews.length > 0) {
-          return jsonResponse({ 
-            error: "Please review your previous order before placing a new one. You can find the review link in your order history." 
-          }, 400);
-        }
+      const pendingReviews = await storage.getPendingReviewsByCustomerPhone(customer.phone);
+      if (pendingReviews.length > 0) {
+        return jsonResponse({ 
+          error: "Please review your previous order before placing a new one. You can find the review link in your order history." 
+        }, 400);
       }
       
       const pizza = await storage.getPizzaById(order.pizzaId);
@@ -229,6 +274,13 @@ export async function onRequest(context: any) {
         if (order.date !== batch.serviceDate) {
           return jsonResponse({ error: "Order date does not match batch service date." }, 400);
         }
+
+        const bookedSlotIds = await storage.getBookedSlotIds(order.batchId, order.date);
+        if (bookedSlotIds.includes(order.slotId)) {
+          return jsonResponse({
+            error: "That pickup time is no longer available. Please choose another slot.",
+          }, 400);
+        }
         
         const isAvailable = await storage.isPizzaAvailableInBatch(
           order.batchId,
@@ -242,8 +294,17 @@ export async function onRequest(context: any) {
             error: `Sorry! Only ${available} ${available === 1 ? 'pizza' : 'pizzas'} available for this batch.` 
           }, 400);
         }
-      } else if (pizza.soldOut) {
-        return jsonResponse({ error: "This pizza is currently sold out." }, 400);
+      } else {
+        const bookedSlotIds = await storage.getBookedSlotIds(null, order.date);
+        if (bookedSlotIds.includes(order.slotId)) {
+          return jsonResponse({
+            error: "That pickup time is no longer available. Please choose another slot.",
+          }, 400);
+        }
+
+        if (pizza.soldOut) {
+          return jsonResponse({ error: "This pizza is currently sold out." }, 400);
+        }
       }
       
       const newOrder = await storage.createOrder(order);
@@ -292,7 +353,7 @@ export async function onRequest(context: any) {
       
       if (message) {
         try {
-          await sendSms(order.customerPhone, message);
+          await sendSms(order.customer.phone, message);
         } catch (smsError) {
           console.error("Failed to send SMS notification:", smsError);
         }
@@ -318,11 +379,11 @@ export async function onRequest(context: any) {
     }
 
     if (path === "/api/reviews/pending" && method === "GET") {
-      const userId = url.searchParams.get("userId");
-      if (!userId) {
-        return jsonResponse({ error: "userId is required" }, 400);
+      const phone = url.searchParams.get("phone");
+      if (!phone) {
+        return jsonResponse({ error: "phone is required" }, 400);
       }
-      const pendingOrders = await storage.getPendingReviewsByUserId(userId);
+      const pendingOrders = await storage.getPendingReviewsByCustomerPhone(phone);
       return jsonResponse(pendingOrders);
     }
 
@@ -534,6 +595,91 @@ export async function onRequest(context: any) {
       
       const available = await storage.getAvailableQuantity(batchId, pizzaId);
       return jsonResponse({ available });
+    }
+
+    if (path.startsWith("/api/batches/") && path.endsWith("/booked-slots") && method === "GET") {
+      const segments = path.split("/").filter(Boolean);
+      const batchId = segments[segments.indexOf("batches") + 1];
+      const batch = await storage.getBatchById(batchId);
+      if (!batch) {
+        return jsonResponse({ error: "Batch not found" }, 404);
+      }
+      const bookedSlotIds = await storage.getBookedSlotIds(batch.id, batch.serviceDate);
+      return jsonResponse({ bookedSlotIds });
+    }
+
+    // ===== TRY A PIE (landing page) =====
+    if (path === "/api/try-pie/context" && method === "GET") {
+      const context = await getTryPieContext(storage);
+      return jsonResponse(context);
+    }
+
+    // ===== PICKUP SLOTS (public) =====
+    if (path === "/api/pickup-slots" && method === "GET") {
+      const slots = await storage.getActivePickupSlots();
+      return jsonResponse(slots);
+    }
+
+    // ===== SLOT LISTS =====
+    if (path === "/api/slot-lists" && method === "GET") {
+      const slotLists = await storage.getSlotLists();
+      return jsonResponse(slotLists);
+    }
+
+    if (path === "/api/slot-lists" && method === "POST") {
+      const body = await parseBody(request);
+      const slotList = insertSlotListSchema.parse(body);
+      const created = await storage.createSlotList(slotList);
+      return jsonResponse(created, 201);
+    }
+
+    if (path.startsWith("/api/slot-lists/") && path.endsWith("/slots") && method === "GET") {
+      const pathSegments = path.split("/").filter(Boolean);
+      const slotListId = pathSegments[pathSegments.indexOf("slot-lists") + 1];
+      const slots = await storage.getPickupSlots(slotListId);
+      return jsonResponse(slots);
+    }
+
+    if (path.startsWith("/api/slot-lists/") && path.endsWith("/slots") && method === "POST") {
+      const pathSegments = path.split("/").filter(Boolean);
+      const slotListId = pathSegments[pathSegments.indexOf("slot-lists") + 1];
+      const body = await parseBody(request);
+      const pickupTime = normalizePickupTime(body.pickupTime);
+      if (!pickupTime) {
+        return jsonResponse({ error: "Invalid pickup time" }, 400);
+      }
+      const pickupSlot = insertPickupSlotSchema.parse({
+        pickupTime,
+        slotListId,
+      });
+      const created = await storage.createPickupSlot(pickupSlot);
+      return jsonResponse(created, 201);
+    }
+
+    if (path.startsWith("/api/slot-lists/") && path.includes("/slots/") && method === "DELETE") {
+      const pathSegments = path.split("/").filter(Boolean);
+      const slotId = pathSegments[pathSegments.indexOf("slots") + 1];
+      await storage.deletePickupSlot(slotId);
+      return jsonResponse({ message: "Pickup slot deleted" });
+    }
+
+    if (path.startsWith("/api/slot-lists/") && !path.includes("/slots") && method === "PATCH") {
+      const pathSegments = path.split("/").filter(Boolean);
+      const slotListId = pathSegments[pathSegments.indexOf("slot-lists") + 1];
+      const body = await parseBody(request);
+      const updates = insertSlotListSchema.partial().parse(body);
+      const updated = await storage.updateSlotList(slotListId, updates);
+      if (!updated) {
+        return jsonResponse({ error: "Slot list not found" }, 404);
+      }
+      return jsonResponse(updated);
+    }
+
+    if (path.startsWith("/api/slot-lists/") && !path.includes("/slots") && method === "DELETE") {
+      const pathSegments = path.split("/").filter(Boolean);
+      const slotListId = pathSegments[pathSegments.indexOf("slot-lists") + 1];
+      await storage.deleteSlotList(slotListId);
+      return jsonResponse({ message: "Slot list deleted" });
     }
 
     // 404 for unmatched routes

@@ -23,7 +23,6 @@ export interface Pizza {
 
 export interface Order {
   id: string;
-  userId?: string; // Link order to user
   customerName: string;
   customerEmail: string;
   customerPhone: string;
@@ -31,7 +30,7 @@ export interface Order {
   quantity: number;
   type: "pickup" | "delivery";
   date: string; // ISO Date string (YYYY-MM-DD)
-  timeSlot: string; // e.g., "16:00", "16:30"
+  slotId: string;
   status: "pending" | "confirmed" | "completed" | "cancelled";
   createdAt: string;
 }
@@ -199,11 +198,11 @@ export const api = {
   },
 
   // Orders
-  getOrders: async (userId?: string): Promise<Order[]> => {
+  getOrders: async (phone?: string): Promise<Order[]> => {
     await delay(400);
     const orders = getStorage<Order[]>(STORAGE_KEYS.ORDERS, []);
-    if (userId) {
-      return orders.filter(o => o.userId === userId);
+    if (phone) {
+      return orders.filter(o => o.customerPhone === phone);
     }
     return orders;
   },

@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+cd "$ROOT"
+
+sh scripts/check-secrets.sh

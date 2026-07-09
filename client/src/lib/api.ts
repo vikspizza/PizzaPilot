@@ -1,5 +1,19 @@
 // Real API client - replaces mock-api.ts
 
+import {
+  adminAuthHeaders,
+  clearAdminToken,
+  hasAdminToken,
+  setAdminToken,
+} from "./admin-session";
+
+function jsonHeaders(): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    ...adminAuthHeaders(),
+  };
+}
+
 export interface User {
   id: string;
   name: string;
@@ -25,17 +39,25 @@ export interface Pizza {
 
 export interface Order {
   id: string;
-  userId?: string;
+  customerId: string;
+  customer?: Customer;
   batchId?: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
   pizzaId: string;
   quantity: number;
   type: "pickup" | "delivery";
   date: string;
-  timeSlot: string;
+  slotId: string;
+  pickupSlot?: PickupSlot;
   status: "pending" | "confirmed" | "cooking" | "ready" | "delivered" | "completed" | "cancelled";
+  createdAt: string;
+}
+
+export interface Customer {
+  id: string;
+  phone: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
   createdAt: string;
 }
 
@@ -43,6 +65,7 @@ export interface Batch {
   id: string;
   batchNumber: number;
   serviceDate: string;
+  slotListId?: string | null;
   serviceStartHour: number;
   serviceEndHour: number;
   createdAt: string;
@@ -53,8 +76,23 @@ export interface BatchPizza {
   batchId: string;
   pizzaId: string;
   maxQuantity: number;
+  available?: number;
   createdAt: string;
   pizza?: Pizza;
+}
+
+export interface SlotList {
+  slotListId: string;
+  slotListName: string;
+  activeYorn: boolean;
+  createdAt: string;
+}
+
+export interface PickupSlot {
+  slotId: string;
+  slotListId: string;
+  pickupTime: string;
+  createdAt: string;
 }
 
 export interface Review {
@@ -101,6 +139,28 @@ function setStorage<T>(key: string, val: T) {
 }
 
 export const api = {
+  adminLogin: async (password: string): Promise<void> => {
+    const res = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || "Invalid password");
+    }
+
+    const { token } = await res.json();
+    setAdminToken(token);
+  },
+
+  adminLogout: (): void => {
+    clearAdminToken();
+  },
+
+  hasAdminSession: (): boolean => hasAdminToken(),
+
   // User Auth
   getCurrentUser: (): User | null => {
     return getStorage(STORAGE_KEYS.CURRENT_USER, null);
@@ -171,7 +231,7 @@ export const api = {
   updatePizza: async (id: string, pizza: Partial<Pizza>): Promise<Pizza> => {
     const res = await fetch(`/api/pizzas/${id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify(pizza),
     });
     if (!res.ok) throw new Error("Failed to update pizza");
@@ -188,7 +248,7 @@ export const api = {
   updateSettings: async (settings: Partial<Settings>): Promise<Settings> => {
     const res = await fetch("/api/settings", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify(settings),
     });
     if (!res.ok) throw new Error("Failed to update settings");
@@ -196,14 +256,28 @@ export const api = {
   },
 
   // Orders
-  getOrders: async (userId?: string): Promise<Order[]> => {
-    const url = userId ? `/api/orders?userId=${userId}` : "/api/orders";
-    const res = await fetch(url);
+  getOrders: async (phone?: string): Promise<Order[]> => {
+    const url = phone ? `/api/orders?phone=${encodeURIComponent(phone)}` : "/api/orders";
+    const res = await fetch(url, {
+      headers: phone ? undefined : adminAuthHeaders(),
+    });
     if (!res.ok) throw new Error("Failed to fetch orders");
     return res.json();
   },
 
-  createOrder: async (order: Omit<Order, "id" | "createdAt" | "status">): Promise<Order> => {
+  createOrder: async (
+    order: {
+      pizzaId: string;
+      batchId?: string;
+      quantity: number;
+      type: "pickup" | "delivery";
+      date: string;
+      slotId: string;
+      customerName: string;
+      customerEmail: string;
+      customerPhone: string;
+    },
+  ): Promise<Order> => {
     const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -219,7 +293,7 @@ export const api = {
   updateOrderStatus: async (id: string, status: string): Promise<Order> => {
     const res = await fetch(`/api/orders/${id}/status`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify({ status }),
     });
     if (!res.ok) throw new Error("Failed to update order");
@@ -241,8 +315,8 @@ export const api = {
     return reviews.find((r: Review) => r.orderId === orderId) || null;
   },
 
-  getPendingReviews: async (userId: string): Promise<Order[]> => {
-    const res = await fetch(`/api/reviews/pending?userId=${userId}`);
+  getPendingReviews: async (phone: string): Promise<Order[]> => {
+    const res = await fetch(`/api/reviews/pending?phone=${encodeURIComponent(phone)}`);
     if (!res.ok) throw new Error("Failed to fetch pending reviews");
     return res.json();
   },
@@ -297,7 +371,7 @@ export const api = {
   createBatch: async (batch: Omit<Batch, "id" | "createdAt">): Promise<Batch> => {
     const res = await fetch("/api/batches", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify(batch),
     });
     if (!res.ok) {
@@ -310,7 +384,7 @@ export const api = {
   updateBatch: async (id: string, batch: Partial<Omit<Batch, "id" | "createdAt">>): Promise<Batch> => {
     const res = await fetch(`/api/batches/${id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify(batch),
     });
     if (!res.ok) {
@@ -323,6 +397,7 @@ export const api = {
   deleteBatch: async (id: string): Promise<void> => {
     const res = await fetch(`/api/batches/${id}`, {
       method: "DELETE",
+      headers: adminAuthHeaders(),
     });
     if (!res.ok) throw new Error("Failed to delete batch");
   },
@@ -330,7 +405,7 @@ export const api = {
   createBatchPizza: async (batchId: string, batchPizza: Omit<BatchPizza, "id" | "batchId" | "createdAt">): Promise<BatchPizza> => {
     const res = await fetch(`/api/batches/${batchId}/pizzas`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify(batchPizza),
     });
     if (!res.ok) {
@@ -343,7 +418,7 @@ export const api = {
   updateBatchPizza: async (batchId: string, pizzaId: string, batchPizza: Partial<Omit<BatchPizza, "id" | "batchId" | "pizzaId" | "createdAt">>): Promise<BatchPizza> => {
     const res = await fetch(`/api/batches/${batchId}/pizzas/${pizzaId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify(batchPizza),
     });
     if (!res.ok) {
@@ -356,6 +431,7 @@ export const api = {
   deleteBatchPizza: async (batchId: string, pizzaId: string): Promise<void> => {
     const res = await fetch(`/api/batches/${batchId}/pizzas/${pizzaId}`, {
       method: "DELETE",
+      headers: adminAuthHeaders(),
     });
     if (!res.ok) throw new Error("Failed to delete batch pizza");
   },
@@ -366,6 +442,13 @@ export const api = {
     return res.json();
   },
 
+  getBookedSlotIds: async (batchId: string): Promise<string[]> => {
+    const res = await fetch(`/api/batches/${batchId}/booked-slots`);
+    if (!res.ok) throw new Error("Failed to fetch booked slots");
+    const data = await res.json();
+    return data.bookedSlotIds ?? [];
+  },
+
   getNextBatch: async (): Promise<Batch | null> => {
     const res = await fetch("/api/batches/next");
     if (!res.ok) {
@@ -373,5 +456,87 @@ export const api = {
       throw new Error("Failed to fetch next batch");
     }
     return res.json();
+  },
+
+  // Slot lists
+  getActivePickupSlots: async (): Promise<PickupSlot[]> => {
+    const res = await fetch("/api/pickup-slots");
+    if (!res.ok) throw new Error("Failed to fetch pickup slots");
+    return res.json();
+  },
+
+  getSlotLists: async (): Promise<SlotList[]> => {
+    const res = await fetch("/api/slot-lists", {
+      headers: adminAuthHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to fetch slot lists");
+    return res.json();
+  },
+
+  createSlotList: async (slotList: Omit<SlotList, "slotListId" | "createdAt">): Promise<SlotList> => {
+    const res = await fetch("/api/slot-lists", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify(slotList),
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "Failed to create slot list");
+    }
+    return res.json();
+  },
+
+  updateSlotList: async (
+    id: string,
+    slotList: Partial<Omit<SlotList, "slotListId" | "createdAt">>,
+  ): Promise<SlotList> => {
+    const res = await fetch(`/api/slot-lists/${id}`, {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify(slotList),
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "Failed to update slot list");
+    }
+    return res.json();
+  },
+
+  deleteSlotList: async (id: string): Promise<void> => {
+    const res = await fetch(`/api/slot-lists/${id}`, {
+      method: "DELETE",
+      headers: adminAuthHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to delete slot list");
+  },
+
+  getPickupSlots: async (slotListId: string): Promise<PickupSlot[]> => {
+    const res = await fetch(`/api/slot-lists/${slotListId}/slots`);
+    if (!res.ok) throw new Error("Failed to fetch pickup slots");
+    return res.json();
+  },
+
+  createPickupSlot: async (
+    slotListId: string,
+    pickupSlot: { pickupTime: string },
+  ): Promise<PickupSlot> => {
+    const res = await fetch(`/api/slot-lists/${slotListId}/slots`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify(pickupSlot),
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "Failed to create pickup slot");
+    }
+    return res.json();
+  },
+
+  deletePickupSlot: async (slotListId: string, slotId: string): Promise<void> => {
+    const res = await fetch(`/api/slot-lists/${slotListId}/slots/${slotId}`, {
+      method: "DELETE",
+      headers: adminAuthHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to delete pickup slot");
   },
 };

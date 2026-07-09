@@ -17,6 +17,16 @@ CREATE TABLE IF NOT EXISTS "users" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 
+-- Customers table
+CREATE TABLE IF NOT EXISTS "customers" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"phone" text NOT NULL UNIQUE,
+	"name" text NOT NULL,
+	"email" text NOT NULL,
+	"avatar_url" text,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+
 -- Pizzas table
 CREATE TABLE IF NOT EXISTS "pizzas" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -34,6 +44,7 @@ CREATE TABLE IF NOT EXISTS "batches" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"batch_number" integer NOT NULL UNIQUE,
 	"service_date" text NOT NULL,
+	"slot_list_id" varchar,
 	"service_start_hour" integer DEFAULT 16 NOT NULL,
 	"service_end_hour" integer DEFAULT 20 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
@@ -42,16 +53,13 @@ CREATE TABLE IF NOT EXISTS "batches" (
 -- Orders table
 CREATE TABLE IF NOT EXISTS "orders" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"user_id" varchar,
+	"customer_id" varchar NOT NULL,
 	"batch_id" varchar,
-	"customer_name" text NOT NULL,
-	"customer_email" text NOT NULL,
-	"customer_phone" text NOT NULL,
 	"pizza_id" varchar NOT NULL,
-	"quantity" integer NOT NULL,
+	"quantity" integer DEFAULT 1 NOT NULL,
 	"type" text NOT NULL,
 	"date" text NOT NULL,
-	"time_slot" text NOT NULL,
+	"slot_id" varchar NOT NULL,
 	"status" text DEFAULT 'pending' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
@@ -108,8 +116,9 @@ ALTER TABLE "batch_pizzas" ADD CONSTRAINT "batch_pizzas_batch_id_batches_id_fk"
 ALTER TABLE "batch_pizzas" ADD CONSTRAINT "batch_pizzas_pizza_id_pizzas_id_fk" 
 	FOREIGN KEY ("pizza_id") REFERENCES "pizzas"("id") ON DELETE no action ON UPDATE no action;
 
-ALTER TABLE "orders" ADD CONSTRAINT "orders_user_id_users_id_fk" 
-	FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
+
+ALTER TABLE "orders" ADD CONSTRAINT "orders_customer_id_customers_id_fk" 
+	FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE no action ON UPDATE no action;
 
 ALTER TABLE "orders" ADD CONSTRAINT "orders_batch_id_batches_id_fk" 
 	FOREIGN KEY ("batch_id") REFERENCES "batches"("id") ON DELETE no action ON UPDATE no action;
@@ -124,10 +133,11 @@ ALTER TABLE "reviews" ADD CONSTRAINT "reviews_pizza_id_pizzas_id_fk"
 	FOREIGN KEY ("pizza_id") REFERENCES "pizzas"("id") ON DELETE no action ON UPDATE no action;
 
 -- Create indexes for better query performance
-CREATE INDEX IF NOT EXISTS "idx_orders_user_id" ON "orders"("user_id");
+CREATE INDEX IF NOT EXISTS "idx_orders_customer_id" ON "orders"("customer_id");
 CREATE INDEX IF NOT EXISTS "idx_orders_batch_id" ON "orders"("batch_id");
 CREATE INDEX IF NOT EXISTS "idx_orders_pizza_id" ON "orders"("pizza_id");
 CREATE INDEX IF NOT EXISTS "idx_orders_date" ON "orders"("date");
+CREATE INDEX IF NOT EXISTS "idx_orders_slot_id" ON "orders"("slot_id");
 CREATE INDEX IF NOT EXISTS "idx_orders_status" ON "orders"("status");
 CREATE INDEX IF NOT EXISTS "idx_reviews_order_id" ON "reviews"("order_id");
 CREATE INDEX IF NOT EXISTS "idx_reviews_pizza_id" ON "reviews"("pizza_id");
@@ -135,3 +145,33 @@ CREATE INDEX IF NOT EXISTS "idx_batch_pizzas_batch_id" ON "batch_pizzas"("batch_
 CREATE INDEX IF NOT EXISTS "idx_batch_pizzas_pizza_id" ON "batch_pizzas"("pizza_id");
 CREATE INDEX IF NOT EXISTS "idx_otp_codes_phone" ON "otp_codes"("phone");
 CREATE INDEX IF NOT EXISTS "idx_otp_codes_expires_at" ON "otp_codes"("expires_at");
+CREATE INDEX IF NOT EXISTS "idx_customers_phone" ON "customers"("phone");
+
+-- Pickup slot lists (e.g. a weekend service window) and their bookable time slots
+CREATE TABLE IF NOT EXISTS "slot_lists" (
+	"slot_list_id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"slot_list_name" text NOT NULL,
+	"active_yorn" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "pickup_slots" (
+	"slot_id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"slot_list_id" varchar NOT NULL,
+	"pickup_time" time NOT NULL, -- Pacific wall-clock time (no date)
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+
+ALTER TABLE "pickup_slots" ADD CONSTRAINT "pickup_slots_slot_list_id_slot_lists_slot_list_id_fk"
+	FOREIGN KEY ("slot_list_id") REFERENCES "slot_lists"("slot_list_id") ON DELETE cascade ON UPDATE no action;
+
+ALTER TABLE "batches" ADD CONSTRAINT "batches_slot_list_id_slot_lists_slot_list_id_fk"
+	FOREIGN KEY ("slot_list_id") REFERENCES "slot_lists"("slot_list_id") ON DELETE no action ON UPDATE no action;
+
+ALTER TABLE "orders" ADD CONSTRAINT "orders_slot_id_pickup_slots_slot_id_fk"
+	FOREIGN KEY ("slot_id") REFERENCES "pickup_slots"("slot_id") ON DELETE no action ON UPDATE no action;
+
+CREATE INDEX IF NOT EXISTS "idx_batches_slot_list_id" ON "batches"("slot_list_id");
+CREATE INDEX IF NOT EXISTS "idx_pickup_slots_slot_list_id" ON "pickup_slots"("slot_list_id");
+CREATE INDEX IF NOT EXISTS "idx_pickup_slots_pickup_time" ON "pickup_slots"("pickup_time");
+CREATE INDEX IF NOT EXISTS "idx_slot_lists_active_yorn" ON "slot_lists"("active_yorn");

@@ -1,0 +1,29 @@
+title = "PizzaPilot gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow documented placeholders and example env files"
+paths = [
+  '''\.dev\.vars\.example$''',
+  '''\.env\.example$''',
+  '''SECURITY\.md$''',
+  '''SETUP\.md$''',
+  '''QUICK_START\.md$''',
+  '''CF_DEPLOYMENT\.md$''',
+  '''DEPLOYMENT\.md$''',
+  '''WORKFLOW\.md$''',
+  '''README_CLOUDFLARE\.md$''',
+  '''\.cloudflare/README\.md$''',
+]
+
+regexes = [
+  '''postgresql://user:password@''',
+  '''postgresql://your_user:your_password@''',
+  '''postgresql://pizzapilot:pizzapilot_dev@localhost''',
+  '''postgresql://localhost/pizzapilot''',
+  '''password `admin`''',
+  '''password "admin"''',
+  '''password === "admin"''',
+]

@@ -1,4 +1,4 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, desc, asc, notInArray } from "drizzle-orm";
 import { db } from "./db";
 import * as schema from "@shared/schema";
 import type {
@@ -8,6 +8,9 @@ import type {
   InsertPizza,
   Order,
   InsertOrder,
+  OrderWithCustomer,
+  Customer,
+  InsertCustomer,
   Review,
   InsertReview,
   Settings,
@@ -18,7 +21,22 @@ import type {
   InsertBatch,
   BatchPizza,
   InsertBatchPizza,
+  SlotList,
+  InsertSlotList,
+  PickupSlot,
+  InsertPickupSlot,
 } from "@shared/schema";
+import {
+  getCustomerById as fetchCustomerById,
+  getCustomerByPhone as fetchCustomerByPhone,
+  mapOrderWithCustomer,
+  selectOrderWithCustomerById,
+  selectOrdersWithCustomer,
+  selectOrdersWithCustomerByDate,
+  selectOrdersWithCustomerByCustomerPhone,
+  getBookedSlotIds as fetchBookedSlotIds,
+  upsertCustomer as upsertCustomerRecord,
+} from "./order-storage";
 
 export interface IStorage {
   // Users
@@ -26,6 +44,11 @@ export interface IStorage {
   getUserByPhone(phone: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
+
+  // Customers
+  getCustomerById(id: string): Promise<Customer | undefined>;
+  getCustomerByPhone(phone: string): Promise<Customer | undefined>;
+  upsertCustomer(customer: InsertCustomer): Promise<Customer>;
 
   // OTP
   createOtpCode(otp: InsertOtpCode): Promise<OtpCode>;
@@ -40,18 +63,19 @@ export interface IStorage {
   updatePizza(id: string, pizza: Partial<InsertPizza>): Promise<Pizza | undefined>;
 
   // Orders
-  getOrders(): Promise<Order[]>;
-  getOrdersByUserId(userId: string): Promise<Order[]>;
-  getOrderById(id: string): Promise<Order | undefined>;
-  getOrdersByDate(date: string): Promise<Order[]>;
-  createOrder(order: InsertOrder): Promise<Order>;
-  updateOrderStatus(id: string, status: string): Promise<Order | undefined>;
+  getOrders(): Promise<OrderWithCustomer[]>;
+  getOrdersByCustomerPhone(phone: string): Promise<OrderWithCustomer[]>;
+  getOrderById(id: string): Promise<OrderWithCustomer | undefined>;
+  getOrdersByDate(date: string): Promise<OrderWithCustomer[]>;
+  getBookedSlotIds(batchId: string | null | undefined, date: string): Promise<string[]>;
+  createOrder(order: InsertOrder): Promise<OrderWithCustomer>;
+  updateOrderStatus(id: string, status: string): Promise<OrderWithCustomer | undefined>;
 
   // Reviews
   getReviews(): Promise<Review[]>;
   getReviewsByPizzaId(pizzaId: string): Promise<Review[]>;
   getReviewByOrderId(orderId: string): Promise<Review | undefined>;
-  getPendingReviewsByUserId(userId: string): Promise<Order[]>;
+  getPendingReviewsByCustomerPhone(phone: string): Promise<OrderWithCustomer[]>;
   createReview(review: InsertReview): Promise<Review>;
 
   // Settings
@@ -68,7 +92,7 @@ export interface IStorage {
   deleteBatch(id: string): Promise<void>;
 
   // Batch Pizzas
-  getBatchPizzas(batchId: string): Promise<(BatchPizza & { pizza: Pizza })[]>;
+  getBatchPizzas(batchId: string): Promise<(BatchPizza & { pizza: Pizza; available: number })[]>;
   getBatchPizza(batchId: string, pizzaId: string): Promise<BatchPizza | undefined>;
   createBatchPizza(batchPizza: InsertBatchPizza): Promise<BatchPizza>;
   updateBatchPizza(id: string, batchPizza: Partial<InsertBatchPizza>): Promise<BatchPizza | undefined>;
@@ -78,6 +102,19 @@ export interface IStorage {
   // Batch availability
   getAvailableQuantity(batchId: string, pizzaId: string): Promise<number>;
   isPizzaAvailableInBatch(batchId: string, pizzaId: string, quantity: number): Promise<boolean>;
+
+  // Slot lists
+  getSlotLists(): Promise<SlotList[]>;
+  getSlotListById(id: string): Promise<SlotList | undefined>;
+  createSlotList(slotList: InsertSlotList): Promise<SlotList>;
+  updateSlotList(id: string, slotList: Partial<InsertSlotList>): Promise<SlotList | undefined>;
+  deleteSlotList(id: string): Promise<void>;
+
+  // Pickup slots
+  getActivePickupSlots(): Promise<PickupSlot[]>;
+  getPickupSlots(slotListId: string): Promise<PickupSlot[]>;
+  createPickupSlot(pickupSlot: InsertPickupSlot): Promise<PickupSlot>;
+  deletePickupSlot(slotId: string): Promise<void>;
 
   // Past experiments: distinct pizzas ever offered, with count of batches each appeared in
   getPastExperiments(): Promise<Array<Pizza & { offerCount: number }>>;
@@ -107,6 +144,19 @@ export class DatabaseStorage implements IStorage {
       .where(eq(schema.users.id, id))
       .returning();
     return updated;
+  }
+
+  // Customers
+  async getCustomerById(id: string): Promise<Customer | undefined> {
+    return fetchCustomerById(db, id);
+  }
+
+  async getCustomerByPhone(phone: string): Promise<Customer | undefined> {
+    return fetchCustomerByPhone(db, phone);
+  }
+
+  async upsertCustomer(customer: InsertCustomer): Promise<Customer> {
+    return upsertCustomerRecord(db, customer);
   }
 
   // OTP
@@ -162,38 +212,48 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Orders
-  async getOrders(): Promise<Order[]> {
-    return db.select().from(schema.orders);
+  async getOrders(): Promise<OrderWithCustomer[]> {
+    return selectOrdersWithCustomer(db);
   }
 
-  async getOrdersByUserId(userId: string): Promise<Order[]> {
-    return db.select().from(schema.orders).where(eq(schema.orders.userId, userId));
+  async getOrdersByCustomerPhone(phone: string): Promise<OrderWithCustomer[]> {
+    return selectOrdersWithCustomerByCustomerPhone(db, phone);
   }
 
-  async getOrderById(id: string): Promise<Order | undefined> {
-    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, id));
-    return order;
+  async getOrderById(id: string): Promise<OrderWithCustomer | undefined> {
+    return selectOrderWithCustomerById(db, id);
   }
 
-  async getOrdersByDate(date: string): Promise<Order[]> {
-    return db.select().from(schema.orders).where(eq(schema.orders.date, date));
+  async getOrdersByDate(date: string): Promise<OrderWithCustomer[]> {
+    return selectOrdersWithCustomerByDate(db, date);
   }
 
-  async createOrder(order: InsertOrder): Promise<Order> {
+  async getBookedSlotIds(batchId: string | null | undefined, date: string): Promise<string[]> {
+    return fetchBookedSlotIds(db, { batchId, date });
+  }
+
+  async createOrder(order: InsertOrder): Promise<OrderWithCustomer> {
     const [newOrder] = await db.insert(schema.orders).values({
       ...order,
       status: "confirmed",
     }).returning();
-    return newOrder;
+    const created = await selectOrderWithCustomerById(db, newOrder.id);
+    if (!created) {
+      throw new Error("Failed to load order after create");
+    }
+    return created;
   }
 
-  async updateOrderStatus(id: string, status: string): Promise<Order | undefined> {
+  async updateOrderStatus(id: string, status: string): Promise<OrderWithCustomer | undefined> {
     const [updated] = await db
       .update(schema.orders)
       .set({ status })
       .where(eq(schema.orders.id, id))
       .returning();
-    return updated;
+    if (!updated) {
+      return undefined;
+    }
+    return selectOrderWithCustomerById(db, updated.id);
   }
 
   // Reviews
@@ -210,24 +270,25 @@ export class DatabaseStorage implements IStorage {
     return review;
   }
 
-  async getPendingReviewsByUserId(userId: string): Promise<Order[]> {
-    // Get all delivered/completed orders for user
+  async getPendingReviewsByCustomerPhone(phone: string): Promise<OrderWithCustomer[]> {
     const completedOrders = await db
-      .select()
+      .select({ order: schema.orders, customer: schema.customers, pickupSlot: schema.pickupSlots })
       .from(schema.orders)
+      .innerJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
+      .innerJoin(schema.pickupSlots, eq(schema.orders.slotId, schema.pickupSlots.slotId))
       .where(
         and(
-          eq(schema.orders.userId, userId),
+          eq(schema.customers.phone, phone),
           sql`${schema.orders.status} IN ('delivered', 'completed')`
         )
       );
-    
-    // Get all reviews for these orders
+
     const allReviews = await db.select().from(schema.reviews);
-    const reviewedOrderIds = new Set(allReviews.map(r => r.orderId));
-    
-    // Return orders that don't have reviews
-    return completedOrders.filter(o => !reviewedOrderIds.has(o.id));
+    const reviewedOrderIds = new Set(allReviews.map((r) => r.orderId));
+
+    return completedOrders
+      .map(({ order, customer, pickupSlot }) => mapOrderWithCustomer(order, customer, pickupSlot))
+      .filter((order) => !reviewedOrderIds.has(order.id));
   }
 
   async createReview(review: InsertReview): Promise<Review> {
@@ -308,7 +369,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Batch Pizzas
-  async getBatchPizzas(batchId: string): Promise<(BatchPizza & { pizza: Pizza })[]> {
+  async getBatchPizzas(batchId: string): Promise<(BatchPizza & { pizza: Pizza; available: number })[]> {
     const results = await db
       .select({
         id: schema.batchPizzas.id,
@@ -321,15 +382,18 @@ export class DatabaseStorage implements IStorage {
       .from(schema.batchPizzas)
       .innerJoin(schema.pizzas, eq(schema.batchPizzas.pizzaId, schema.pizzas.id))
       .where(eq(schema.batchPizzas.batchId, batchId));
-    
-    return results.map(r => ({
-      id: r.id,
-      batchId: r.batchId,
-      pizzaId: r.pizzaId,
-      maxQuantity: r.maxQuantity,
-      createdAt: r.createdAt,
-      pizza: r.pizza,
-    }));
+
+    return Promise.all(
+      results.map(async (r) => ({
+        id: r.id,
+        batchId: r.batchId,
+        pizzaId: r.pizzaId,
+        maxQuantity: r.maxQuantity,
+        createdAt: r.createdAt,
+        pizza: r.pizza,
+        available: await this.getAvailableQuantity(batchId, r.pizzaId),
+      })),
+    );
   }
 
   async getBatchPizza(batchId: string, pizzaId: string): Promise<BatchPizza | undefined> {
@@ -372,19 +436,20 @@ export class DatabaseStorage implements IStorage {
     const batchPizza = await this.getBatchPizza(batchId, pizzaId);
     if (!batchPizza) return 0;
 
-    // Get total quantity ordered for this pizza in this batch
-    const orders = await db
-      .select()
+    const [result] = await db
+      .select({
+        total: sql<number>`coalesce(sum(${schema.orders.quantity}), 0)::int`,
+      })
       .from(schema.orders)
       .where(
         and(
           eq(schema.orders.batchId, batchId),
           eq(schema.orders.pizzaId, pizzaId),
-          sql`${schema.orders.status} NOT IN ('cancelled')`
-        )
+          notInArray(schema.orders.status, ["cancelled"]),
+        ),
       );
-    
-    const orderedQuantity = orders.reduce((sum, order) => sum + order.quantity, 0);
+
+    const orderedQuantity = Number(result?.total ?? 0);
     return Math.max(0, batchPizza.maxQuantity - orderedQuantity);
   }
 
@@ -413,6 +478,76 @@ export class DatabaseStorage implements IStorage {
     return Array.from(byPizzaId.values())
       .map(({ pizza, count }) => ({ ...pizza, offerCount: count }))
       .sort((a, b) => b.offerCount - a.offerCount);
+  }
+
+  // Slot lists
+  async getSlotLists(): Promise<SlotList[]> {
+    return db
+      .select()
+      .from(schema.slotLists)
+      .orderBy(desc(schema.slotLists.createdAt));
+  }
+
+  async getSlotListById(id: string): Promise<SlotList | undefined> {
+    const [slotList] = await db
+      .select()
+      .from(schema.slotLists)
+      .where(eq(schema.slotLists.slotListId, id));
+    return slotList;
+  }
+
+  async createSlotList(slotList: InsertSlotList): Promise<SlotList> {
+    if (slotList.activeYorn) {
+      await db.update(schema.slotLists).set({ activeYorn: false });
+    }
+    const [created] = await db.insert(schema.slotLists).values(slotList).returning();
+    return created;
+  }
+
+  async updateSlotList(id: string, slotList: Partial<InsertSlotList>): Promise<SlotList | undefined> {
+    if (slotList.activeYorn) {
+      await db.update(schema.slotLists).set({ activeYorn: false });
+    }
+    const [updated] = await db
+      .update(schema.slotLists)
+      .set(slotList)
+      .where(eq(schema.slotLists.slotListId, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSlotList(id: string): Promise<void> {
+    await db.delete(schema.slotLists).where(eq(schema.slotLists.slotListId, id));
+  }
+
+  // Pickup slots
+  async getActivePickupSlots(): Promise<PickupSlot[]> {
+    const [activeList] = await db
+      .select()
+      .from(schema.slotLists)
+      .where(eq(schema.slotLists.activeYorn, true))
+      .limit(1);
+    if (!activeList) {
+      return [];
+    }
+    return this.getPickupSlots(activeList.slotListId);
+  }
+
+  async getPickupSlots(slotListId: string): Promise<PickupSlot[]> {
+    return db
+      .select()
+      .from(schema.pickupSlots)
+      .where(eq(schema.pickupSlots.slotListId, slotListId))
+      .orderBy(asc(schema.pickupSlots.pickupTime));
+  }
+
+  async createPickupSlot(pickupSlot: InsertPickupSlot): Promise<PickupSlot> {
+    const [created] = await db.insert(schema.pickupSlots).values(pickupSlot).returning();
+    return created;
+  }
+
+  async deletePickupSlot(slotId: string): Promise<void> {
+    await db.delete(schema.pickupSlots).where(eq(schema.pickupSlots.slotId, slotId));
   }
 }
 

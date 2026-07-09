@@ -1,14 +1,61 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPizzaSchema, insertOrderSchema, insertReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema } from "@shared/schema";
+import { insertPizzaSchema, insertOrderSchema, insertReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema, insertSlotListSchema, insertPickupSlotSchema, createOrderRequestSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSms } from "./sms";
+import { getTryPieContext } from "./try-pie-context";
+import { normalizePickupTime } from "@shared/pickup-time";
+import {
+  createAdminToken,
+  getBearerToken,
+  verifyAdminPassword,
+  verifyAdminToken,
+} from "@shared/admin-auth";
+import { requiresAdminAuth } from "@shared/requires-admin-auth";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   // Health check
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.post("/api/admin/login", async (req, res) => {
+    try {
+      const password = String(req.body?.password ?? "");
+      const expected = process.env.ADMIN_PASSWORD;
+
+      if (!expected) {
+        return res.status(503).json({ error: "Admin access is not configured" });
+      }
+
+      if (!verifyAdminPassword(password, expected)) {
+        return res.status(401).json({ error: "Invalid password" });
+      }
+
+      const token = await createAdminToken(expected);
+      res.json({ token });
+    } catch (error) {
+      console.error("Error during admin login:", error);
+      res.status(500).json({ error: "Failed to sign in" });
+    }
+  });
+
+  app.use(async (req, res, next) => {
+    if (!req.path.startsWith("/api")) {
+      return next();
+    }
+
+    if (!requiresAdminAuth(req.method, req.path, req.query as Record<string, string | undefined>)) {
+      return next();
+    }
+
+    const token = getBearerToken(req.headers.authorization);
+    if (!(await verifyAdminToken(token, process.env.ADMIN_PASSWORD))) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    next();
   });
 
   // ===== PIZZAS =====
@@ -117,9 +164,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ===== ORDERS =====
   app.get("/api/orders", async (req, res) => {
     try {
-      const { userId } = req.query;
-      const orders = userId
-        ? await storage.getOrdersByUserId(userId as string)
+      const { phone } = req.query;
+      const orders = phone
+        ? await storage.getOrdersByCustomerPhone(phone as string)
         : await storage.getOrders();
       res.json(orders);
     } catch (error) {
@@ -130,16 +177,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/orders", async (req, res) => {
     try {
-      const order = insertOrderSchema.parse(req.body);
+      const orderRequest = createOrderRequestSchema.parse(req.body);
+      const customer = await storage.upsertCustomer({
+        phone: orderRequest.customerPhone,
+        name: orderRequest.customerName,
+        email: orderRequest.customerEmail,
+      });
+      const order = insertOrderSchema.parse({
+        batchId: orderRequest.batchId ?? undefined,
+        customerId: customer.id,
+        pizzaId: orderRequest.pizzaId,
+        quantity: orderRequest.quantity,
+        type: orderRequest.type,
+        date: orderRequest.date,
+        slotId: orderRequest.slotId,
+      });
       
-      // Check for pending reviews if user is logged in
-      if (order.userId) {
-        const pendingReviews = await storage.getPendingReviewsByUserId(order.userId);
-        if (pendingReviews.length > 0) {
-          return res.status(400).json({ 
-            error: "Please review your previous order before placing a new one. You can find the review link in your order history." 
-          });
-        }
+      const pendingReviews = await storage.getPendingReviewsByCustomerPhone(customer.phone);
+      if (pendingReviews.length > 0) {
+        return res.status(400).json({ 
+          error: "Please review your previous order before placing a new one. You can find the review link in your order history." 
+        });
       }
       
       // Check if pizza exists and is active
@@ -166,6 +224,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             error: "Order date does not match batch service date." 
           });
         }
+
+        const bookedSlotIds = await storage.getBookedSlotIds(order.batchId, order.date);
+        if (bookedSlotIds.includes(order.slotId)) {
+          return res.status(400).json({
+            error: "That pickup time is no longer available. Please choose another slot.",
+          });
+        }
         
         // Check if pizza is available in this batch
         const isAvailable = await storage.isPizzaAvailableInBatch(
@@ -181,6 +246,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           });
         }
       } else {
+        const bookedSlotIds = await storage.getBookedSlotIds(null, order.date);
+        if (bookedSlotIds.includes(order.slotId)) {
+          return res.status(400).json({
+            error: "That pickup time is no longer available. Please choose another slot.",
+          });
+        }
+
         // Fallback to old logic if no batchId (for backward compatibility)
         if (pizza.soldOut) {
           return res.status(400).json({ 
@@ -265,7 +337,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
 
         if (message) {
-          await sendSms(order.customerPhone, message);
+          await sendSms(order.customer.phone, message);
         }
       } catch (smsError) {
         // Log SMS error but don't fail the status update
@@ -331,11 +403,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/reviews/pending", async (req, res) => {
     try {
-      const { userId } = req.query;
-      if (!userId) {
-        return res.status(400).json({ error: "userId is required" });
+      const { phone } = req.query;
+      if (!phone) {
+        return res.status(400).json({ error: "phone is required" });
       }
-      const pendingOrders = await storage.getPendingReviewsByUserId(userId as string);
+      const pendingOrders = await storage.getPendingReviewsByCustomerPhone(phone as string);
       res.json(pendingOrders);
     } catch (error) {
       console.error("Error fetching pending reviews:", error);
@@ -606,6 +678,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/batches/:id/booked-slots", async (req, res) => {
+    try {
+      const batch = await storage.getBatchById(req.params.id);
+      if (!batch) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
+      const bookedSlotIds = await storage.getBookedSlotIds(batch.id, batch.serviceDate);
+      res.json({ bookedSlotIds });
+    } catch (error) {
+      console.error("Error fetching booked slots:", error);
+      res.status(500).json({ error: "Failed to fetch booked slots" });
+    }
+  });
+
   // Get next available batch
   app.get("/api/batches/next", async (_req, res) => {
     try {
@@ -629,6 +715,121 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error fetching next batch:", error);
       res.status(500).json({ error: "Failed to fetch next batch" });
+    }
+  });
+
+  // ===== TRY A PIE (landing page) =====
+  app.get("/api/try-pie/context", async (_req, res) => {
+    try {
+      const context = await getTryPieContext(storage);
+      res.json(context);
+    } catch (error) {
+      console.error("Error fetching try-pie context:", error);
+      res.status(500).json({ error: "Failed to load ordering context" });
+    }
+  });
+
+  // ===== PICKUP SLOTS (public) =====
+  app.get("/api/pickup-slots", async (_req, res) => {
+    try {
+      const slots = await storage.getActivePickupSlots();
+      res.json(slots);
+    } catch (error) {
+      console.error("Error fetching pickup slots:", error);
+      res.status(500).json({ error: "Failed to fetch pickup slots" });
+    }
+  });
+
+  // ===== SLOT LISTS =====
+  app.get("/api/slot-lists", async (_req, res) => {
+    try {
+      const slotLists = await storage.getSlotLists();
+      res.json(slotLists);
+    } catch (error) {
+      console.error("Error fetching slot lists:", error);
+      res.status(500).json({ error: "Failed to fetch slot lists" });
+    }
+  });
+
+  app.post("/api/slot-lists", async (req, res) => {
+    try {
+      const slotList = insertSlotListSchema.parse(req.body);
+      const created = await storage.createSlotList(slotList);
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("Error creating slot list:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create slot list" });
+    }
+  });
+
+  app.get("/api/slot-lists/:id/slots", async (req, res) => {
+    try {
+      const slots = await storage.getPickupSlots(req.params.id);
+      res.json(slots);
+    } catch (error) {
+      console.error("Error fetching pickup slots:", error);
+      res.status(500).json({ error: "Failed to fetch pickup slots" });
+    }
+  });
+
+  app.post("/api/slot-lists/:id/slots", async (req, res) => {
+    try {
+      const pickupTime = normalizePickupTime(req.body.pickupTime);
+      if (!pickupTime) {
+        return res.status(400).json({ error: "Invalid pickup time" });
+      }
+      const pickupSlot = insertPickupSlotSchema.parse({
+        pickupTime,
+        slotListId: req.params.id,
+      });
+      const created = await storage.createPickupSlot(pickupSlot);
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("Error creating pickup slot:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create pickup slot" });
+    }
+  });
+
+  app.delete("/api/slot-lists/:slotListId/slots/:slotId", async (req, res) => {
+    try {
+      await storage.deletePickupSlot(req.params.slotId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting pickup slot:", error);
+      res.status(500).json({ error: "Failed to delete pickup slot" });
+    }
+  });
+
+  app.patch("/api/slot-lists/:id", async (req, res) => {
+    try {
+      const updates = insertSlotListSchema.partial().parse(req.body);
+      const updated = await storage.updateSlotList(req.params.id, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Slot list not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating slot list:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update slot list" });
+    }
+  });
+
+  app.delete("/api/slot-lists/:id", async (req, res) => {
+    try {
+      await storage.deleteSlotList(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting slot list:", error);
+      res.status(500).json({ error: "Failed to delete slot list" });
     }
   });
 

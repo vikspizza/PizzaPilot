@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Pizza, type Order, type Batch, type BatchPizza } from "@/lib/api";
+import { api, type Pizza, type Order, type Batch, type BatchPizza, type SlotList, type PickupSlot } from "@/lib/api";
 import { Layout } from "@/components/layout";
+import { LandingHomeLink } from "@/components/landing-home-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -16,23 +17,33 @@ import { Loader2, Lock, Check, X, ChefHat, Package, Truck, XCircle, Plus, Edit, 
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext } from "@/components/ui/pagination";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { comparePickupTime, formatPickupTime, normalizePickupTime } from "@/lib/pacific-time";
 
 export default function Admin() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => api.hasAdminSession());
   const [password, setPassword] = useState("");
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [loginError, setLoginError] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === "admin") {
+    setLoginError("");
+    setIsSigningIn(true);
+
+    try {
+      await api.adminLogin(password);
       setIsAuthenticated(true);
-    } else {
-      alert("Wrong password. (Hint: admin)");
+      setPassword("");
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "Invalid password");
+    } finally {
+      setIsSigningIn(false);
     }
   };
 
   if (!isAuthenticated) {
     return (
-      <Layout>
+      <Layout basicLogo>
         <div className="flex items-center justify-center min-h-[60vh]">
           <Card className="w-full max-w-md">
             <CardHeader>
@@ -49,10 +60,20 @@ export default function Admin() {
                     value={password} 
                     onChange={(e) => setPassword(e.target.value)} 
                     placeholder="Enter access code"
+                    autoComplete="current-password"
                   />
                 </div>
-                <Button type="submit" className="w-full">Enter Kitchen</Button>
+                {loginError ? (
+                  <p className="text-sm text-destructive">{loginError}</p>
+                ) : null}
+                <Button type="submit" className="w-full" disabled={isSigningIn}>
+                  {isSigningIn ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Enter Kitchen
+                </Button>
               </form>
+              <div className="mt-4 text-center">
+                <LandingHomeLink />
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -142,13 +163,16 @@ function AdminDashboard() {
   };
 
   return (
-    <Layout>
+    <Layout basicLogo>
       <div className="space-y-8">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center gap-4 flex-wrap">
           <h1 className="text-3xl font-display font-bold">Kitchen Dashboard</h1>
-          <Badge variant="outline" className="px-3 py-1 text-sm font-mono">
-            ADMIN MODE
-          </Badge>
+          <div className="flex items-center gap-3">
+            <LandingHomeLink>Home</LandingHomeLink>
+            <Badge variant="outline" className="px-3 py-1 text-sm font-mono">
+              ADMIN MODE
+            </Badge>
+          </div>
         </div>
 
         <Tabs defaultValue="orders">
@@ -156,6 +180,7 @@ function AdminDashboard() {
             <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="menu">Menu Management</TabsTrigger>
             <TabsTrigger value="batches">Batch Management</TabsTrigger>
+            <TabsTrigger value="slots">Pickup Slots</TabsTrigger>
           </TabsList>
 
           <TabsContent value="orders">
@@ -191,15 +216,19 @@ function AdminDashboard() {
                           <TableRow key={order.id}>
                             <TableCell className="font-mono text-xs">{order.id}</TableCell>
                             <TableCell>
-                              <div className="font-medium">{order.customerName}</div>
-                              <div className="text-xs text-muted-foreground">{order.customerPhone}</div>
+                              <div className="font-medium">{order.customer?.name ?? "—"}</div>
+                              <div className="text-xs text-muted-foreground">{order.customer?.phone ?? "—"}</div>
                             </TableCell>
                             <TableCell>
                               {pizzas?.find(p => p.id === order.pizzaId)?.name} x{order.quantity}
                             </TableCell>
                             <TableCell>
                               <div className="text-sm">{order.date}</div>
-                              <div className="text-xs text-muted-foreground">{order.timeSlot}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {order.pickupSlot
+                                  ? formatPickupTime(order.pickupSlot.pickupTime)
+                                  : "—"}
+                              </div>
                             </TableCell>
                             <TableCell>
                               <Badge variant="secondary" className="capitalize">{order.type}</Badge>
@@ -352,6 +381,10 @@ function AdminDashboard() {
           <TabsContent value="batches">
             <BatchManagement pizzas={pizzas || []} />
           </TabsContent>
+
+          <TabsContent value="slots">
+            <SlotManagement />
+          </TabsContent>
         </Tabs>
       </div>
     </Layout>
@@ -367,6 +400,11 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
   const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+
+  const { data: slotLists } = useQuery({
+    queryKey: ["slot-lists"],
+    queryFn: api.getSlotLists,
+  });
 
   const { data: batches, isLoading: batchesLoading } = useQuery({
     queryKey: ["batches"],
@@ -431,8 +469,8 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
   const createBatchPizzaMutation = useMutation({
     mutationFn: ({ batchId, batchPizza }: { batchId: string; batchPizza: Omit<BatchPizza, "id" | "batchId" | "createdAt"> }) =>
       api.createBatchPizza(batchId, batchPizza),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["batchPizzas"] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["batchPizzas", variables.batchId] });
       toast({ title: "Pizza Added", description: "Pizza has been added to batch." });
     },
     onError: (error) => {
@@ -447,8 +485,8 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
   const updateBatchPizzaMutation = useMutation({
     mutationFn: ({ batchId, pizzaId, batchPizza }: { batchId: string; pizzaId: string; batchPizza: Partial<Omit<BatchPizza, "id" | "batchId" | "pizzaId" | "createdAt">> }) =>
       api.updateBatchPizza(batchId, pizzaId, batchPizza),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["batchPizzas"] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["batchPizzas", variables.batchId] });
       toast({ title: "Pizza Updated", description: "Pizza quantity has been updated." });
     },
     onError: (error) => {
@@ -463,8 +501,8 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
   const deleteBatchPizzaMutation = useMutation({
     mutationFn: ({ batchId, pizzaId }: { batchId: string; pizzaId: string }) =>
       api.deleteBatchPizza(batchId, pizzaId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["batchPizzas"] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["batchPizzas", variables.batchId] });
       toast({ title: "Pizza Removed", description: "Pizza has been removed from batch." });
     },
     onError: (error) => {
@@ -520,7 +558,7 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
                         <Badge variant="default">Selected</Badge>
                       )}
                     </CardTitle>
-                    <CardDescription className="mt-1 flex items-center gap-4">
+                    <CardDescription className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
                         {(() => {
@@ -534,6 +572,45 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
                         {batch.serviceStartHour}:00 - {batch.serviceEndHour}:00
                       </span>
                     </CardDescription>
+                    <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 max-w-sm">
+                      <Label
+                        htmlFor={`batch-slot-list-${batch.id}`}
+                        className="text-xs text-muted-foreground whitespace-nowrap"
+                      >
+                        Pickup slot list
+                      </Label>
+                      {slotLists && slotLists.length > 0 ? (
+                        <Select
+                          value={batch.slotListId ?? ""}
+                          onValueChange={(slotListId) =>
+                            updateBatchMutation.mutate({
+                              id: batch.id,
+                              batch: { slotListId: slotListId || null },
+                            })
+                          }
+                          disabled={
+                            updateBatchMutation.isPending &&
+                            updateBatchMutation.variables?.id === batch.id
+                          }
+                        >
+                          <SelectTrigger id={`batch-slot-list-${batch.id}`} className="h-8">
+                            <SelectValue placeholder="Select slot list" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {slotLists.map((list) => (
+                              <SelectItem key={list.slotListId} value={list.slotListId}>
+                                {list.slotListName}
+                                {list.activeYorn ? " (active)" : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          No slot lists yet — create one under Pickup Slots.
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -652,6 +729,7 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
       <CreateBatchDialog
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
+        slotLists={slotLists || []}
         onCreate={(batch) => createBatchMutation.mutate(batch)}
         isLoading={createBatchMutation.isPending}
       />
@@ -659,6 +737,7 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
       {editingBatch && (
         <EditBatchDialog
           batch={editingBatch}
+          slotLists={slotLists || []}
           onClose={() => setEditingBatch(null)}
           onUpdate={(updates) => updateBatchMutation.mutate({ id: editingBatch.id, batch: updates })}
           isLoading={updateBatchMutation.isPending}
@@ -679,7 +758,7 @@ function BatchPizzasList({
 }: {
   batch: Batch;
   pizzas: Pizza[];
-  batchPizzas: (BatchPizza & { pizza?: Pizza })[];
+  batchPizzas: (BatchPizza & { pizza?: Pizza; available?: number })[];
   isLoading: boolean;
   onAddPizza: (pizzaId: string, maxQuantity: number) => void;
   onUpdatePizza: (pizzaId: string, maxQuantity: number) => void;
@@ -777,7 +856,6 @@ function BatchPizzasList({
                   key={bp.id}
                   batchPizza={bp}
                   pizza={pizza}
-                  batch={batch}
                   onUpdate={onUpdatePizza}
                   onDelete={onDeletePizza}
                 />
@@ -793,22 +871,16 @@ function BatchPizzasList({
 function BatchPizzaRow({
   batchPizza,
   pizza,
-  batch,
   onUpdate,
   onDelete,
 }: {
-  batchPizza: BatchPizza;
+  batchPizza: BatchPizza & { available?: number };
   pizza?: Pizza;
-  batch: Batch;
   onUpdate: (pizzaId: string, maxQuantity: number) => void;
   onDelete: (pizzaId: string) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [maxQuantity, setMaxQuantity] = useState(batchPizza.maxQuantity);
-  const { data: availability } = useQuery({
-    queryKey: ["availability", batch.id, batchPizza.pizzaId],
-    queryFn: () => api.getBatchAvailability(batch.id, batchPizza.pizzaId),
-  });
 
   const handleUpdate = () => {
     if (maxQuantity > 0 && maxQuantity !== batchPizza.maxQuantity) {
@@ -836,8 +908,10 @@ function BatchPizzaRow({
         )}
       </TableCell>
       <TableCell>
-        <Badge variant={availability && availability.available > 0 ? "default" : "destructive"}>
-          {availability ? `${availability.available} available` : "Loading..."}
+        <Badge variant={(batchPizza.available ?? 0) > 0 ? "default" : "destructive"}>
+          {batchPizza.available !== undefined
+            ? `${batchPizza.available} available`
+            : "—"}
         </Badge>
       </TableCell>
       <TableCell>
@@ -878,14 +952,17 @@ function CreateBatchDialog({
   onClose,
   onCreate,
   isLoading,
+  slotLists,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (batch: Omit<Batch, "id" | "createdAt">) => void;
   isLoading: boolean;
+  slotLists: SlotList[];
 }) {
   const [batchNumber, setBatchNumber] = useState(1);
   const [serviceDate, setServiceDate] = useState("");
+  const [slotListId, setSlotListId] = useState("");
   const [serviceStartHour, setServiceStartHour] = useState(16);
   const [serviceEndHour, setServiceEndHour] = useState(20);
 
@@ -894,6 +971,7 @@ function CreateBatchDialog({
     onCreate({
       batchNumber,
       serviceDate,
+      slotListId: slotListId || null,
       serviceStartHour,
       serviceEndHour,
     });
@@ -927,6 +1005,24 @@ function CreateBatchDialog({
               onChange={(e) => setServiceDate(e.target.value)}
               required
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Pickup Slot List</Label>
+            <Select value={slotListId} onValueChange={setSlotListId} required>
+              <SelectTrigger>
+                <SelectValue placeholder="Select slot list" />
+              </SelectTrigger>
+              <SelectContent>
+                {slotLists.map((list) => (
+                  <SelectItem key={list.slotListId} value={list.slotListId}>
+                    {list.slotListName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Pickup times come from this slot list (Pacific time).
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -972,13 +1068,16 @@ function EditBatchDialog({
   onClose,
   onUpdate,
   isLoading,
+  slotLists,
 }: {
   batch: Batch;
   onClose: () => void;
   onUpdate: (updates: Partial<Omit<Batch, "id" | "createdAt">>) => void;
   isLoading: boolean;
+  slotLists: SlotList[];
 }) {
   const [serviceDate, setServiceDate] = useState(batch.serviceDate);
+  const [slotListId, setSlotListId] = useState(batch.slotListId || "");
   const [serviceStartHour, setServiceStartHour] = useState(batch.serviceStartHour);
   const [serviceEndHour, setServiceEndHour] = useState(batch.serviceEndHour);
 
@@ -986,6 +1085,7 @@ function EditBatchDialog({
     e.preventDefault();
     onUpdate({
       serviceDate,
+      slotListId: slotListId || null,
       serviceStartHour,
       serviceEndHour,
     });
@@ -1009,6 +1109,21 @@ function EditBatchDialog({
               onChange={(e) => setServiceDate(e.target.value)}
               required
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Pickup Slot List</Label>
+            <Select value={slotListId} onValueChange={setSlotListId} required>
+              <SelectTrigger>
+                <SelectValue placeholder="Select slot list" />
+              </SelectTrigger>
+              <SelectContent>
+                {slotLists.map((list) => (
+                  <SelectItem key={list.slotListId} value={list.slotListId}>
+                    {list.slotListName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -1041,6 +1156,429 @@ function EditBatchDialog({
             <Button type="submit" disabled={isLoading}>
               {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               Update Batch
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SlotManagement() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [editingSlotList, setEditingSlotList] = useState<SlotList | null>(null);
+  const [selectedSlotList, setSelectedSlotList] = useState<SlotList | null>(null);
+
+  const { data: slotLists, isLoading: slotListsLoading } = useQuery({
+    queryKey: ["slot-lists"],
+    queryFn: api.getSlotLists,
+  });
+
+  const { data: pickupSlots, isLoading: pickupSlotsLoading } = useQuery({
+    queryKey: ["pickup-slots", selectedSlotList?.slotListId],
+    queryFn: () => (selectedSlotList ? api.getPickupSlots(selectedSlotList.slotListId) : Promise.resolve([])),
+    enabled: !!selectedSlotList,
+  });
+
+  const createSlotListMutation = useMutation({
+    mutationFn: api.createSlotList,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["slot-lists"] });
+      setIsCreateDialogOpen(false);
+      toast({ title: "Slot list created" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create slot list",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateSlotListMutation = useMutation({
+    mutationFn: ({ id, slotList }: { id: string; slotList: Partial<Omit<SlotList, "slotListId" | "createdAt">> }) =>
+      api.updateSlotList(id, slotList),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["slot-lists"] });
+      setEditingSlotList(null);
+      toast({ title: "Slot list updated" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update slot list",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteSlotListMutation = useMutation({
+    mutationFn: api.deleteSlotList,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["slot-lists"] });
+      setSelectedSlotList(null);
+      toast({ title: "Slot list deleted" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete slot list",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createPickupSlotMutation = useMutation({
+    mutationFn: ({ slotListId, pickupTime }: { slotListId: string; pickupTime: string }) =>
+      api.createPickupSlot(slotListId, { pickupTime }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pickup-slots"] });
+      toast({ title: "Pickup slot added" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to add pickup slot",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deletePickupSlotMutation = useMutation({
+    mutationFn: ({ slotListId, slotId }: { slotListId: string; slotId: string }) =>
+      api.deletePickupSlot(slotListId, slotId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pickup-slots"] });
+      toast({ title: "Pickup slot removed" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to remove pickup slot",
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center gap-4 flex-wrap">
+        <div>
+          <h2 className="text-2xl font-display font-bold">Pickup Slot Management</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Create slot lists and define pickup times customers can book
+          </p>
+        </div>
+        <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          New Slot List
+        </Button>
+      </div>
+
+      {slotListsLoading ? (
+        <Loader2 className="animate-spin" />
+      ) : slotLists?.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">No slot lists yet. Create one to define pickup times.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {slotLists?.map((slotList) => (
+            <Card key={slotList.slotListId}>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 flex-wrap">
+                      {slotList.slotListName}
+                      {slotList.activeYorn && <Badge variant="default">Active</Badge>}
+                      {selectedSlotList?.slotListId === slotList.slotListId && (
+                        <Badge variant="secondary">Selected</Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      Created {format(new Date(slotList.createdAt), "MMM d, yyyy")}
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor={`active-slot-list-${slotList.slotListId}`} className="text-xs text-muted-foreground">
+                        Active
+                      </Label>
+                      <Switch
+                        id={`active-slot-list-${slotList.slotListId}`}
+                        checked={slotList.activeYorn}
+                        onCheckedChange={(activeYorn) =>
+                          updateSlotListMutation.mutate({ id: slotList.slotListId, slotList: { activeYorn } })
+                        }
+                        disabled={updateSlotListMutation.isPending}
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setSelectedSlotList(
+                          selectedSlotList?.slotListId === slotList.slotListId ? null : slotList,
+                        )
+                      }
+                    >
+                      {selectedSlotList?.slotListId === slotList.slotListId ? "Hide" : "Manage"} Slots
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setEditingSlotList(slotList)}>
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        if (confirm(`Delete "${slotList.slotListName}" and all its pickup slots?`)) {
+                          deleteSlotListMutation.mutate(slotList.slotListId);
+                        }
+                      }}
+                      disabled={deleteSlotListMutation.isPending}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              {selectedSlotList?.slotListId === slotList.slotListId && (
+                <CardContent>
+                  <SlotListSlots
+                    slots={pickupSlots || []}
+                    isLoading={pickupSlotsLoading}
+                    onAddSlot={(pickupTime) =>
+                      createPickupSlotMutation.mutate({
+                        slotListId: slotList.slotListId,
+                        pickupTime,
+                      })
+                    }
+                    onDeleteSlot={(slotId) =>
+                      deletePickupSlotMutation.mutate({
+                        slotListId: slotList.slotListId,
+                        slotId,
+                      })
+                    }
+                    isAdding={createPickupSlotMutation.isPending}
+                  />
+                </CardContent>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <CreateSlotListDialog
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onCreate={(slotList) => createSlotListMutation.mutate(slotList)}
+        isLoading={createSlotListMutation.isPending}
+      />
+
+      {editingSlotList && (
+        <EditSlotListDialog
+          slotList={editingSlotList}
+          onClose={() => setEditingSlotList(null)}
+          onUpdate={(updates) =>
+            updateSlotListMutation.mutate({ id: editingSlotList.slotListId, slotList: updates })
+          }
+          isLoading={updateSlotListMutation.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+function SlotListSlots({
+  slots,
+  isLoading,
+  onAddSlot,
+  onDeleteSlot,
+  isAdding,
+}: {
+  slots: PickupSlot[];
+  isLoading: boolean;
+  onAddSlot: (pickupTime: string) => void;
+  onDeleteSlot: (slotId: string) => void;
+  isAdding: boolean;
+}) {
+  const [pickupTime, setPickupTime] = useState("");
+
+  const handleAddSlot = () => {
+    if (!pickupTime) return;
+    const normalized = normalizePickupTime(pickupTime);
+    if (!normalized) return;
+    onAddSlot(normalized);
+    setPickupTime("");
+  };
+
+  if (isLoading) {
+    return <Loader2 className="animate-spin" />;
+  }
+
+  const sortedSlots = [...slots].sort((a, b) => comparePickupTime(a.pickupTime, b.pickupTime));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-2 flex-1 min-w-[180px] max-w-xs">
+          <Label htmlFor="pickup-time">Pickup time (Pacific)</Label>
+          <Input
+            id="pickup-time"
+            type="time"
+            value={pickupTime}
+            onChange={(e) => setPickupTime(e.target.value)}
+          />
+        </div>
+        <Button onClick={handleAddSlot} disabled={!pickupTime || isAdding}>
+          {isAdding ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+          Add Slot
+        </Button>
+      </div>
+
+      {sortedSlots.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No pickup slots in this list yet.</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Pickup Time</TableHead>
+              <TableHead className="w-[100px]">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedSlots.map((slot) => (
+              <TableRow key={slot.slotId}>
+                <TableCell>{formatPickupTime(slot.pickupTime)}</TableCell>
+                <TableCell>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      if (confirm(`Remove pickup slot ${formatPickupTime(slot.pickupTime)}?`)) {
+                        onDeleteSlot(slot.slotId);
+                      }
+                    }}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+function CreateSlotListDialog({
+  isOpen,
+  onClose,
+  onCreate,
+  isLoading,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreate: (slotList: Omit<SlotList, "slotListId" | "createdAt">) => void;
+  isLoading: boolean;
+}) {
+  const [slotListName, setSlotListName] = useState("");
+  const [activeYorn, setActiveYorn] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onCreate({ slotListName: slotListName.trim(), activeYorn });
+    setSlotListName("");
+    setActiveYorn(false);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create Slot List</DialogTitle>
+          <DialogDescription>
+            Name a group of pickup times (for example, a weekend service window)
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="slot-list-name">Slot list name</Label>
+            <Input
+              id="slot-list-name"
+              value={slotListName}
+              onChange={(e) => setSlotListName(e.target.value)}
+              placeholder="e.g. Saturday March 8"
+              required
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch id="slot-list-active" checked={activeYorn} onCheckedChange={setActiveYorn} />
+            <Label htmlFor="slot-list-active">Set as active list</Label>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isLoading || !slotListName.trim()}>
+              {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Create
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditSlotListDialog({
+  slotList,
+  onClose,
+  onUpdate,
+  isLoading,
+}: {
+  slotList: SlotList;
+  onClose: () => void;
+  onUpdate: (updates: Partial<Omit<SlotList, "slotListId" | "createdAt">>) => void;
+  isLoading: boolean;
+}) {
+  const [slotListName, setSlotListName] = useState(slotList.slotListName);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onUpdate({ slotListName: slotListName.trim() });
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Slot List</DialogTitle>
+          <DialogDescription>Update the slot list name</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="edit-slot-list-name">Slot list name</Label>
+            <Input
+              id="edit-slot-list-name"
+              value={slotListName}
+              onChange={(e) => setSlotListName(e.target.value)}
+              required
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isLoading || !slotListName.trim()}>
+              {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Save
             </Button>
           </DialogFooter>
         </form>

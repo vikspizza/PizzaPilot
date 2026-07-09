@@ -1,7 +1,7 @@
 import { build } from "vite";
-import { execSync } from "child_process";
 import path from "path";
 import fs from "fs";
+import { APP_ROUTE_DIRS } from "./app-routes";
 
 async function buildForCloudflare() {
   console.log("Building for Cloudflare Pages...");
@@ -27,6 +27,18 @@ async function buildForCloudflare() {
       fs.rmSync(assetsDest, { recursive: true, force: true });
     }
     fs.cpSync(assetsSrc, assetsDest, { recursive: true });
+  }
+
+  // Ensure React shells exist for /login, /admin, etc. (Wrangler ignores _redirects rewrites)
+  const outDir = path.resolve(process.cwd(), "dist/public");
+  const appHtmlPath = path.join(outDir, "app.html");
+  if (fs.existsSync(appHtmlPath)) {
+    const appHtml = fs.readFileSync(appHtmlPath, "utf8");
+    for (const route of APP_ROUTE_DIRS) {
+      const dir = path.join(outDir, route);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "index.html"), appHtml);
+    }
   }
 
   // Copy functions directory structure is already in place

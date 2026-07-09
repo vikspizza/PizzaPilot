@@ -1,41 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<head>
+  <meta charset="UTF-8" />
+  <title>Vik's Pizza</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/landing.css" />
+</head>
+<body class="landing-home">
+  <div class="container">
+    <a class="basic-logo-link home-logo-link" href="/">
+      <img class="basic-logo" src="/viks-pizza-trans-logo2.png" alt="Vik's Pizza" />
+    </a>
+    <p>Amazing pizza. Thoughtfully made.</p>
+    <div class="coming-soon">FREE<hr class="coming-soon-divider" />WEEKENDS ONLY</div>
+    <section id="upcoming-batch" class="upcoming-batch" hidden>
+      <h2 class="upcoming-batch-heading" id="upcoming-batch-heading"></h2>
+      <div class="upcoming-batch-pizzas" id="upcoming-batch-pizzas"></div>
+    </section>
+    <div class="cta-stack">
+      <div class="try-pie-block">
+        <button type="button" class="try-pie-btn" id="try-pie-btn" disabled>Try a Pie</button>
+        <p class="try-pie-status" id="try-pie-status" aria-live="polite"></p>
+        <p class="try-pie-success" id="try-pie-success" hidden></p>
+      </div>
+      <a class="journey-link" href="/journey.html">About My Journey</a>
+      <a class="support-link" href="/support.html">Support My Journey</a>
+    </div>
+  </div>
 
-    <title>Vik's Pizza | Experimental Pizza Lab</title>
-    <meta property="og:title" content="Vik's Pizza" />
-    <meta property="og:description" content="EST. 2025. Experimental toppings. Free pies for honest reviews." />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="/attached_assets/generated_images/vikspizza_HTPC_lt.png" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Vik's Pizza" />
-    <meta name="twitter:description" content="EST. 2025. Experimental toppings. Free pies for honest reviews." />
-    <meta name="twitter:image" content="/attached_assets/generated_images/vikspizza_HTPC_lt.png" />
+  <div id="try-pie-modal" class="try-pie-modal" hidden>
+    <div class="try-pie-modal-backdrop" id="try-pie-modal-backdrop"></div>
+    <div
+      class="try-pie-modal-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="try-pie-modal-title"
+    >
+      <button type="button" class="try-pie-modal-close" id="try-pie-modal-close" aria-label="Close">
+        &times;
+      </button>
+      <h2 class="try-pie-modal-title" id="try-pie-modal-title">Try a Pie</h2>
+      <p class="try-pie-modal-subtitle">Reserve your pie. Pay when you pick up.</p>
+      <form id="try-pie-form" class="try-pie-form">
+        <label class="try-pie-field">
+          <span class="try-pie-label">Pickup time</span>
+          <select id="try-pie-slot" name="slotId" required>
+            <option value="" disabled selected>Select pickup time</option>
+          </select>
+        </label>
+        <label class="try-pie-field">
+          <span class="try-pie-label">Name for pickup</span>
+          <input id="try-pie-name" name="name" type="text" autocomplete="name" minlength="2" required />
+        </label>
+        <label class="try-pie-field">
+          <span class="try-pie-label">Phone</span>
+          <input
+            id="try-pie-phone"
+            name="phone"
+            type="tel"
+            inputmode="numeric"
+            autocomplete="tel"
+            maxlength="10"
+            pattern="[0-9]{10}"
+            placeholder="10-digit number"
+            required
+          />
+        </label>
+        <label class="try-pie-field">
+          <span class="try-pie-label">Email</span>
+          <input id="try-pie-email" name="email" type="email" autocomplete="email" required />
+        </label>
+        <button type="submit" class="try-pie-submit" id="try-pie-submit" disabled>Submit order</button>
+        <p class="try-pie-error" id="try-pie-error" hidden></p>
+      </form>
+    </div>
+  </div>
 
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=3" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=3" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=3" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png?v=3" />
-    <link rel="shortcut icon" href="/favicon-32x32.png?v=3" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Using Space Grotesk for headings (modern, technical but friendly) and DM Sans for body (clean, readable) -->
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
-    <script>
-      // Initialize theme before React renders to prevent flash
-      (function() {
-        const stored = localStorage.getItem("theme");
-        const theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-        if (theme === "dark") {
-          document.documentElement.classList.add("dark");
-        }
-      })();
-    </script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+  <script src="/try-pie.js" defer></script>
+</body>
 </html>

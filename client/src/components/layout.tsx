@@ -6,7 +6,16 @@ import { useTheme } from "@/hooks/use-theme";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout({
+  children,
+  basicLogo = false,
+  basicLogoWidth = "md",
+}: {
+  children: React.ReactNode;
+  basicLogo?: boolean;
+  /** Match page content width: md = login card (448px), 4xl = admin dashboard */
+  basicLogoWidth?: "md" | "4xl";
+}) {
   const [location, setLocation] = useLocation();
   const [user, setUser] = useState<ReturnType<typeof api.getCurrentUser> | null>(null);
   const { theme, toggleTheme } = useTheme();
@@ -42,23 +51,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const basicLogoMaxClass =
+    basicLogoWidth === "4xl"
+      ? "w-full max-w-[35.84rem]" /* 80% of admin logo (44.8rem) */
+      : "w-full max-w-[22.4rem]"; /* 80% of max-w-md */
+
   return (
     <div className="min-h-screen flex flex-col bg-background font-sans selection:bg-primary/10">
       <header className={`border-b border-border/40 sticky top-0 z-50 ${theme === "dark" ? "bg-background" : "bg-background/80 backdrop-blur-sm"}`}>
         <div className="w-full">
-          <Link href="/" className="block bg-transparent" onClick={blockIfNeedsProfile}>
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-0 group cursor-pointer bg-transparent">
-              <img 
-                src={theme === "dark" ? "/attached_assets/generated_images/vikspizza_HTPC_dk.png" : "/attached_assets/generated_images/vikspizza_HTPC_lt.png"} 
-                alt="Vik's Pizza" 
-                className="w-4/5 h-auto object-contain transition-opacity duration-300 group-hover:opacity-80 mx-auto"
+          <a href="/" className="block bg-transparent" onClick={blockIfNeedsProfile}>
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-2 group cursor-pointer">
+              <img
+                src="/viks-pizza-trans-logo2.png"
+                alt="Vik's Pizza"
+                className={`${basicLogoMaxClass} mx-auto h-auto object-contain transition-opacity duration-300 group-hover:opacity-80`}
               />
             </div>
-          </Link>
+          </a>
 
           <nav className="flex items-center gap-6 pb-3 pt-0 max-w-4xl mx-auto px-4 justify-end">
-            <a 
-              href="/" 
+            <a
+              href="/"
               onClick={(e) => {
                 if (needsProfile) {
                   e.preventDefault();
@@ -68,11 +82,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   });
                   return;
                 }
-                e.preventDefault();
                 if (location === "/") {
+                  e.preventDefault();
                   window.scrollTo({ top: 0, behavior: "smooth" });
-                } else {
-                  window.location.href = "/";
                 }
               }}
               className={`text-sm font-medium transition-colors hover:text-primary cursor-pointer ${location === "/" ? "text-primary" : "text-foreground/80"}`}
