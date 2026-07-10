@@ -2,6 +2,7 @@
 
 ## Journey
 - Create a new page that represents the logged in view. So, Try a Pie --> Logged in view. So, what should this look like?
+- Remove menu links and footer in the admin view
 
 ## Older Stuff
 - A timeslot chosen by the customer should allow only 2 pizzas max. When a timeslot is taken in a batch window, it should no longer appear in the drop down.
