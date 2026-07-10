@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
@@ -56,6 +56,31 @@ export async function getBookedSlotIds(
     .where(and(...conditions));
 
   return [...new Set(rows.map((row) => row.slotId))];
+}
+
+export async function hasExistingBatchOrder(
+  db: AppDatabase,
+  batchId: string,
+  phone: string,
+  email: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: schema.orders.id })
+    .from(schema.orders)
+    .innerJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
+    .where(
+      and(
+        eq(schema.orders.batchId, batchId),
+        sql`${schema.orders.status} != 'cancelled'`,
+        or(
+          eq(schema.customers.phone, phone),
+          sql`lower(${schema.customers.email}) = lower(${email})`,
+        ),
+      ),
+    )
+    .limit(1);
+
+  return Boolean(row);
 }
 
 export async function selectOrdersWithCustomerByCustomerPhone(

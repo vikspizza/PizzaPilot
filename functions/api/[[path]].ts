@@ -3,6 +3,7 @@
 import { DatabaseStorage } from "../../server/storage-cf";
 import { getDb } from "../../server/db-cf";
 import { insertPizzaSchema, insertOrderSchema, insertReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema, insertSlotListSchema, insertPickupSlotSchema, createOrderRequestSchema } from "../../shared/schema";
+import { createOrderFromRequest } from "../../server/order-create";
 import { z } from "zod";
 import { sendSms } from "../../server/sms";
 import { getTryPieContext } from "../../server/try-pie-context";
@@ -32,20 +33,20 @@ async function parseBody(request: Request): Promise<any> {
   }
 }
 
-// Helper to get URL params
-function getParams(request: Request): Record<string, string> {
-  const url = new URL(request.url);
-  const path = url.pathname.replace("/api/", "");
-  const segments = path.split("/").filter(Boolean);
-  const params: Record<string, string> = {};
-  
-  // Handle common patterns
-  if (segments.length >= 1) params.id = segments[0];
-  if (segments.length >= 2) params.subId = segments[1];
-  if (segments.length >= 3) params.subSubId = segments[2];
-  
-  return params;
+function getOrderIdFromPath(pathname: string): string | undefined {
+  const match = pathname.match(/^\/api\/orders\/([^/]+)(?:\/status)?$/);
+  return match?.[1];
 }
+
+const VALID_ORDER_STATUSES = [
+  "pending",
+  "confirmed",
+  "cooking",
+  "ready",
+  "delivered",
+  "completed",
+  "cancelled",
+];
 
 export async function onRequest(context: any) {
   const { request, env } = context;
@@ -235,108 +236,53 @@ export async function onRequest(context: any) {
     if (path === "/api/orders" && method === "POST") {
       const body = await parseBody(request);
       const orderRequest = createOrderRequestSchema.parse(body);
-      const customer = await storage.upsertCustomer({
-        phone: orderRequest.customerPhone,
-        name: orderRequest.customerName,
-        email: orderRequest.customerEmail,
-      });
-      const order = insertOrderSchema.parse({
-        batchId: orderRequest.batchId ?? undefined,
-        customerId: customer.id,
-        pizzaId: orderRequest.pizzaId,
-        quantity: orderRequest.quantity,
-        type: orderRequest.type,
-        date: orderRequest.date,
-        slotId: orderRequest.slotId,
-      });
-      
-      const pendingReviews = await storage.getPendingReviewsByCustomerPhone(customer.phone);
-      if (pendingReviews.length > 0) {
-        return jsonResponse({ 
-          error: "Please review your previous order before placing a new one. You can find the review link in your order history." 
-        }, 400);
-      }
-      
-      const pizza = await storage.getPizzaById(order.pizzaId);
-      if (!pizza) {
-        return jsonResponse({ error: "Pizza not found" }, 404);
-      }
-      if (!pizza.active) {
-        return jsonResponse({ error: "This pizza is not currently available." }, 400);
-      }
-      
-      if (order.batchId) {
-        const batch = await storage.getBatchById(order.batchId);
-        if (!batch) {
-          return jsonResponse({ error: "Batch not found" }, 404);
-        }
-        
-        if (order.date !== batch.serviceDate) {
-          return jsonResponse({ error: "Order date does not match batch service date." }, 400);
-        }
+      const siteUrl = env.SITE_URL || new URL(request.url).origin;
 
-        const bookedSlotIds = await storage.getBookedSlotIds(order.batchId, order.date);
-        if (bookedSlotIds.includes(order.slotId)) {
-          return jsonResponse({
-            error: "That pickup time is no longer available. Please choose another slot.",
-          }, 400);
-        }
-        
-        const isAvailable = await storage.isPizzaAvailableInBatch(
-          order.batchId,
-          order.pizzaId,
-          order.quantity
-        );
-        
-        if (!isAvailable) {
-          const available = await storage.getAvailableQuantity(order.batchId, order.pizzaId);
-          return jsonResponse({ 
-            error: `Sorry! Only ${available} ${available === 1 ? 'pizza' : 'pizzas'} available for this batch.` 
-          }, 400);
-        }
-      } else {
-        const bookedSlotIds = await storage.getBookedSlotIds(null, order.date);
-        if (bookedSlotIds.includes(order.slotId)) {
-          return jsonResponse({
-            error: "That pickup time is no longer available. Please choose another slot.",
-          }, 400);
-        }
+      const result = await createOrderFromRequest(storage, orderRequest, {
+        resendApiKey: env.RESEND_API_KEY,
+        emailFrom: env.EMAIL_FROM,
+        siteUrl,
+      });
 
-        if (pizza.soldOut) {
-          return jsonResponse({ error: "This pizza is currently sold out." }, 400);
-        }
+      if (!result.ok) {
+        return jsonResponse({ error: result.error }, result.status);
       }
-      
-      const newOrder = await storage.createOrder(order);
-      return jsonResponse(newOrder, 201);
+
+      return jsonResponse(result.order, 201);
     }
 
-    if (path.startsWith("/api/orders/") && method === "GET") {
-      const params = getParams(request);
-      const order = await storage.getOrderById(params.id);
+    if (method === "GET" && /^\/api\/orders\/[^/]+$/.test(path)) {
+      const orderId = getOrderIdFromPath(path);
+      if (!orderId) {
+        return jsonResponse({ error: "Order not found" }, 404);
+      }
+      const order = await storage.getOrderById(orderId);
       if (!order) {
         return jsonResponse({ error: "Order not found" }, 404);
       }
       return jsonResponse(order);
     }
 
-    if (path.startsWith("/api/orders/") && path.endsWith("/status") && method === "PATCH") {
-      const params = getParams(request);
+    if (path.endsWith("/status") && method === "PATCH" && /^\/api\/orders\/[^/]+\/status$/.test(path)) {
+      const orderId = getOrderIdFromPath(path);
+      if (!orderId) {
+        return jsonResponse({ error: "Order not found" }, 404);
+      }
       const body = await parseBody(request);
       const { status } = body;
       
-      if (!status) {
-        return jsonResponse({ error: "Status is required" }, 400);
+      if (!status || !VALID_ORDER_STATUSES.includes(status)) {
+        return jsonResponse({ error: "Invalid status" }, 400);
       }
       
-      const order = await storage.getOrderById(params.id);
+      const order = await storage.getOrderById(orderId);
       if (!order) {
         return jsonResponse({ error: "Order not found" }, 404);
       }
       
-      const updated = await storage.updateOrderStatus(params.id, status);
+      const updated = await storage.updateOrderStatus(orderId, status);
       if (!updated) {
-        return jsonResponse({ error: "Failed to update order status" }, 500);
+        return jsonResponse({ error: "Order not found" }, 404);
       }
       
       // Send SMS notification

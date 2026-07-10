@@ -296,7 +296,10 @@ export const api = {
       headers: jsonHeaders(),
       body: JSON.stringify({ status }),
     });
-    if (!res.ok) throw new Error("Failed to update order");
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || "Failed to update order");
+    }
     return res.json();
   },
 

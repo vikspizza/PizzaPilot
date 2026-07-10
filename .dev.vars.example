@@ -8,3 +8,11 @@ DATABASE_URL=postgresql://user:password@host.neon.tech/dbname?sslmode=require
 # Optional: admin kitchen password (never commit a real value)
 ADMIN_PASSWORD=change-me
 
+# Optional: order confirmation emails (Resend — https://resend.com)
+RESEND_API_KEY=
+# Must be an address on a domain you verified in Resend — NOT @gmail.com.
+# Production: Vik's Pizza <orders@vikspizza.com>
+# Local testing only: Vik's Pizza <onboarding@resend.dev> (delivers only to your Resend signup email)
+EMAIL_FROM=Vik's Pizza <onboarding@resend.dev>
+SITE_URL=https://your-site.pages.dev
+

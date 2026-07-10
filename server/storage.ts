@@ -35,6 +35,7 @@ import {
   selectOrdersWithCustomerByDate,
   selectOrdersWithCustomerByCustomerPhone,
   getBookedSlotIds as fetchBookedSlotIds,
+  hasExistingBatchOrder as fetchHasExistingBatchOrder,
   upsertCustomer as upsertCustomerRecord,
 } from "./order-storage";
 
@@ -68,6 +69,7 @@ export interface IStorage {
   getOrderById(id: string): Promise<OrderWithCustomer | undefined>;
   getOrdersByDate(date: string): Promise<OrderWithCustomer[]>;
   getBookedSlotIds(batchId: string | null | undefined, date: string): Promise<string[]>;
+  hasExistingBatchOrder(batchId: string, phone: string, email: string): Promise<boolean>;
   createOrder(order: InsertOrder): Promise<OrderWithCustomer>;
   updateOrderStatus(id: string, status: string): Promise<OrderWithCustomer | undefined>;
 
@@ -230,6 +232,10 @@ export class DatabaseStorage implements IStorage {
 
   async getBookedSlotIds(batchId: string | null | undefined, date: string): Promise<string[]> {
     return fetchBookedSlotIds(db, { batchId, date });
+  }
+
+  async hasExistingBatchOrder(batchId: string, phone: string, email: string): Promise<boolean> {
+    return fetchHasExistingBatchOrder(db, batchId, phone, email);
   }
 
   async createOrder(order: InsertOrder): Promise<OrderWithCustomer> {

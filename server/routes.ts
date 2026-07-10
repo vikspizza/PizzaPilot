@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertPizzaSchema, insertOrderSchema, insertReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema, insertSlotListSchema, insertPickupSlotSchema, createOrderRequestSchema } from "@shared/schema";
+import { createOrderFromRequest } from "./order-create";
 import { z } from "zod";
 import { sendSms } from "./sms";
 import { getTryPieContext } from "./try-pie-context";
@@ -178,102 +179,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/orders", async (req, res) => {
     try {
       const orderRequest = createOrderRequestSchema.parse(req.body);
-      const customer = await storage.upsertCustomer({
-        phone: orderRequest.customerPhone,
-        name: orderRequest.customerName,
-        email: orderRequest.customerEmail,
+      const siteUrl =
+        process.env.SITE_URL ||
+        `${req.protocol}://${req.get("host") ?? "localhost"}`;
+
+      const result = await createOrderFromRequest(storage, orderRequest, {
+        resendApiKey: process.env.RESEND_API_KEY,
+        emailFrom: process.env.EMAIL_FROM,
+        siteUrl,
       });
-      const order = insertOrderSchema.parse({
-        batchId: orderRequest.batchId ?? undefined,
-        customerId: customer.id,
-        pizzaId: orderRequest.pizzaId,
-        quantity: orderRequest.quantity,
-        type: orderRequest.type,
-        date: orderRequest.date,
-        slotId: orderRequest.slotId,
-      });
-      
-      const pendingReviews = await storage.getPendingReviewsByCustomerPhone(customer.phone);
-      if (pendingReviews.length > 0) {
-        return res.status(400).json({ 
-          error: "Please review your previous order before placing a new one. You can find the review link in your order history." 
-        });
-      }
-      
-      // Check if pizza exists and is active
-      const pizza = await storage.getPizzaById(order.pizzaId);
-      if (!pizza) {
-        return res.status(404).json({ error: "Pizza not found" });
-      }
-      if (!pizza.active) {
-        return res.status(400).json({ 
-          error: "This pizza is not currently available." 
-        });
-      }
-      
-      // Check batch availability if batchId is provided
-      if (order.batchId) {
-        const batch = await storage.getBatchById(order.batchId);
-        if (!batch) {
-          return res.status(404).json({ error: "Batch not found" });
-        }
-        
-        // Verify order date matches batch service date
-        if (order.date !== batch.serviceDate) {
-          return res.status(400).json({ 
-            error: "Order date does not match batch service date." 
-          });
-        }
 
-        const bookedSlotIds = await storage.getBookedSlotIds(order.batchId, order.date);
-        if (bookedSlotIds.includes(order.slotId)) {
-          return res.status(400).json({
-            error: "That pickup time is no longer available. Please choose another slot.",
-          });
-        }
-        
-        // Check if pizza is available in this batch
-        const isAvailable = await storage.isPizzaAvailableInBatch(
-          order.batchId,
-          order.pizzaId,
-          order.quantity
-        );
-        
-        if (!isAvailable) {
-          const available = await storage.getAvailableQuantity(order.batchId, order.pizzaId);
-          return res.status(400).json({ 
-            error: `Sorry! Only ${available} ${available === 1 ? 'pizza' : 'pizzas'} available for this batch.` 
-          });
-        }
-      } else {
-        const bookedSlotIds = await storage.getBookedSlotIds(null, order.date);
-        if (bookedSlotIds.includes(order.slotId)) {
-          return res.status(400).json({
-            error: "That pickup time is no longer available. Please choose another slot.",
-          });
-        }
-
-        // Fallback to old logic if no batchId (for backward compatibility)
-        if (pizza.soldOut) {
-          return res.status(400).json({ 
-            error: "This pizza is currently sold out." 
-          });
-        }
-        
-        // Validate daily limit
-        const settings = await storage.getSettings();
-        const ordersForDay = await storage.getOrdersByDate(order.date);
-        const totalQuantity = ordersForDay.reduce((sum, o) => sum + o.quantity, 0);
-        
-        if (totalQuantity + order.quantity > settings.maxPiesPerDay) {
-          return res.status(400).json({ 
-            error: "Sorry! We just sold out for that date while you were ordering." 
-          });
-        }
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
       }
 
-      const newOrder = await storage.createOrder(order);
-      res.status(201).json(newOrder);
+      res.status(201).json(result.order);
     } catch (error) {
       console.error("Error creating order:", error);
       if (error instanceof z.ZodError) {

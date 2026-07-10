@@ -92,6 +92,26 @@ Admin login uses `ADMIN_PASSWORD` from the environment — **not** from client c
 
 Protected server routes include batch/slot management, order status updates, and listing all orders.
 
+## Order confirmation email
+
+Order confirmations are sent via [Resend](https://resend.com) when `RESEND_API_KEY` is set.
+
+1. Create a Resend API key and verify your sending domain.
+2. Set locally in `.dev.vars` or `.env`:
+   ```bash
+   RESEND_API_KEY=re_...
+   EMAIL_FROM=Vik's Pizza <orders@yourdomain.com>
+   SITE_URL=https://your-production-url.pages.dev
+   ```
+3. Set in Cloudflare Pages (encrypted secrets):
+   ```bash
+   npx wrangler pages secret put RESEND_API_KEY
+   npx wrangler pages secret put EMAIL_FROM
+   npx wrangler pages secret put SITE_URL
+   ```
+
+`SITE_URL` is used for the logo image in the email (`/viks-pizza-logo2.png`). Without `RESEND_API_KEY`, orders still succeed; the email is logged to the server console only.
+
 ## If a real secret was pushed to GitHub
 
 1. **Rotate immediately** (steps above).

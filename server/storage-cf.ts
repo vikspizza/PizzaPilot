@@ -36,6 +36,7 @@ import {
   selectOrdersWithCustomerByDate,
   selectOrdersWithCustomerByCustomerPhone,
   getBookedSlotIds as fetchBookedSlotIds,
+  hasExistingBatchOrder as fetchHasExistingBatchOrder,
   upsertCustomer as upsertCustomerRecord,
 } from "./order-storage";
 
@@ -153,6 +154,10 @@ class DatabaseStorage {
 
   async getBookedSlotIds(batchId: string | null | undefined, date: string): Promise<string[]> {
     return fetchBookedSlotIds(this.db, { batchId, date });
+  }
+
+  async hasExistingBatchOrder(batchId: string, phone: string, email: string): Promise<boolean> {
+    return fetchHasExistingBatchOrder(this.db, batchId, phone, email);
   }
 
   async createOrder(order: InsertOrder): Promise<OrderWithCustomer> {
