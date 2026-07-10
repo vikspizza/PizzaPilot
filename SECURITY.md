@@ -110,7 +110,7 @@ Order confirmations are sent via [Resend](https://resend.com) when `RESEND_API_K
    npx wrangler pages secret put SITE_URL
    ```
 
-`SITE_URL` is used for the logo image in the email (`/viks-pizza-logo2.png`). Without `RESEND_API_KEY`, orders still succeed; the email is logged to the server console only.
+`SITE_URL` is optional branding metadata. Order email logos are embedded from the deployment origin (e.g. `pizzapilot.pages.dev`), not `SITE_URL`, so a custom domain without static assets will not break the logo. Without `RESEND_API_KEY`, orders still succeed; the email is logged to the server console only.
 
 ## If a real secret was pushed to GitHub
 

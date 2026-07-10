@@ -236,12 +236,14 @@ export async function onRequest(context: any) {
     if (path === "/api/orders" && method === "POST") {
       const body = await parseBody(request);
       const orderRequest = createOrderRequestSchema.parse(body);
-      const siteUrl = env.SITE_URL || new URL(request.url).origin;
+      const requestOrigin = new URL(request.url).origin;
+      const siteUrl = env.SITE_URL || requestOrigin;
 
       const result = await createOrderFromRequest(storage, orderRequest, {
         resendApiKey: env.RESEND_API_KEY,
         emailFrom: env.EMAIL_FROM,
         siteUrl,
+        logoBaseUrl: requestOrigin,
       });
 
       if (!result.ok) {

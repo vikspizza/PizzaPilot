@@ -179,14 +179,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/orders", async (req, res) => {
     try {
       const orderRequest = createOrderRequestSchema.parse(req.body);
-      const siteUrl =
-        process.env.SITE_URL ||
-        `${req.protocol}://${req.get("host") ?? "localhost"}`;
+      const requestOrigin = `${req.protocol}://${req.get("host") ?? "localhost"}`;
+      const siteUrl = process.env.SITE_URL || requestOrigin;
 
       const result = await createOrderFromRequest(storage, orderRequest, {
         resendApiKey: process.env.RESEND_API_KEY,
         emailFrom: process.env.EMAIL_FROM,
         siteUrl,
+        logoBaseUrl: requestOrigin,
       });
 
       if (!result.ok) {

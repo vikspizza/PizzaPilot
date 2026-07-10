@@ -1,10 +1,21 @@
 import type { OrderWithCustomer, Pizza } from "@shared/schema";
 import { formatPickupTime } from "@shared/pickup-time";
 
+const LOGO_FILENAME = "viks-pizza-logo2.png";
+const LOGO_CONTENT_ID = "viks-logo";
+
 export type OrderEmailConfig = {
   resendApiKey?: string;
   emailFrom?: string;
   siteUrl: string;
+  /** Origin that serves static assets (e.g. pages.dev). Defaults to siteUrl. */
+  logoBaseUrl?: string;
+};
+
+type ResendAttachment = {
+  filename: string;
+  content: string;
+  content_id: string;
 };
 
 function formatServiceDate(dateStr: string): string {
@@ -21,12 +32,50 @@ function formatServiceDate(dateStr: string): string {
   }).format(new Date(year, month - 1, day));
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(bytes).toString("base64");
+  }
+
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function logoUrlFor(baseUrl: string): string {
+  return `${baseUrl.replace(/\/$/, "")}/${LOGO_FILENAME}`;
+}
+
+async function loadLogoAttachment(logoBaseUrl: string): Promise<ResendAttachment | null> {
+  const url = logoUrlFor(logoBaseUrl);
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`[EMAIL] Could not load logo from ${url}: ${response.status}`);
+      return null;
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return {
+      filename: LOGO_FILENAME,
+      content: bytesToBase64(bytes),
+      content_id: LOGO_CONTENT_ID,
+    };
+  } catch (error) {
+    console.error(`[EMAIL] Could not load logo from ${url}:`, error);
+    return null;
+  }
+}
+
 function buildOrderConfirmationHtml(
   order: OrderWithCustomer,
   pizza: Pizza,
-  siteUrl: string,
+  logoSrc: string,
 ): string {
-  const logoUrl = `${siteUrl.replace(/\/$/, "")}/viks-pizza-logo2.png`;
   const pickupTime = formatPickupTime(order.pickupSlot.pickupTime);
   const serviceDate = formatServiceDate(order.date);
 
@@ -44,7 +93,7 @@ function buildOrderConfirmationHtml(
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#171717;border:1px solid rgba(255,255,255,0.12);border-radius:16px;overflow:hidden;">
           <tr>
             <td style="padding:28px 24px 12px;text-align:center;background:#111111;">
-              <img src="${logoUrl}" alt="Vik's Pizza" width="220" style="display:block;margin:0 auto;max-width:220px;height:auto;" />
+              <img src="${logoSrc}" alt="Vik's Pizza" width="220" style="display:block;margin:0 auto;max-width:220px;height:auto;" />
             </td>
           </tr>
           <tr>
@@ -97,8 +146,12 @@ export async function sendOrderConfirmationEmail(
     return;
   }
 
+  const logoBaseUrl = config.logoBaseUrl || config.siteUrl;
+  const logoAttachment = await loadLogoAttachment(logoBaseUrl);
+  const logoSrc = logoAttachment ? `cid:${LOGO_CONTENT_ID}` : logoUrlFor(logoBaseUrl);
+
   const subject = `Your Vik's Pizza order is confirmed`;
-  const html = buildOrderConfirmationHtml(order, pizza, config.siteUrl);
+  const html = buildOrderConfirmationHtml(order, pizza, logoSrc);
   const from = config.emailFrom || "Vik's Pizza <onboarding@resend.dev>";
 
   if (!config.resendApiKey) {
@@ -119,6 +172,7 @@ export async function sendOrderConfirmationEmail(
       to: [to],
       subject,
       html,
+      ...(logoAttachment ? { attachments: [logoAttachment] } : {}),
     }),
   });
 
