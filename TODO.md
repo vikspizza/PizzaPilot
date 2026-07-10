@@ -1,5 +1,9 @@
 # TODO
 
+## Journey
+- Create a new page that represents the logged in view. So, Try a Pie --> Logged in view. So, what should this look like?
+
+## Older Stuff
 - A timeslot chosen by the customer should allow only 2 pizzas max. When a timeslot is taken in a batch window, it should no longer appear in the drop down.
 - Change the name of the site from Crustops to Vikspizza
 - Use a black theme with our logo stencil
