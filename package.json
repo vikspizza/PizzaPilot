@@ -19,7 +19,7 @@
     "init-db": "npm run db:push && npm run seed",
     "secrets:scan": "sh scripts/check-secrets.sh --all",
     "secrets:protect": "sh scripts/check-secrets.sh",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
