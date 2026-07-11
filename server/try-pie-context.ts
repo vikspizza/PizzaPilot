@@ -88,7 +88,9 @@ export async function getTryPieContext(storage: IStorage): Promise<TryPieContext
   const slots = (await storage.getPickupSlots(batch.slotListId)).sort((a, b) =>
     comparePickupTime(a.pickupTime, b.pickupTime),
   );
-  const bookedSlotIds = await storage.getBookedSlotIds(batch.id, batch.serviceDate);
+  const orderBookedSlotIds = await storage.getBookedSlotIds(batch.id, batch.serviceDate);
+  const heldSlotIds = await storage.getHeldSlotIds(batch.id, batch.serviceDate);
+  const bookedSlotIds = Array.from(new Set([...orderBookedSlotIds, ...heldSlotIds]));
 
   return {
     batch: batchSummary,

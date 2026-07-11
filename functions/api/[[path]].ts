@@ -567,11 +567,13 @@ export async function onRequest(context: any) {
       const body = await parseBody(request);
       const batchId = String(body.batchId ?? "");
       const pizzaId = String(body.pizzaId ?? "");
-      if (!batchId || !pizzaId) {
-        return jsonResponse({ error: "batchId and pizzaId are required" }, 400);
+      const date = String(body.date ?? "");
+      const slotId = String(body.slotId ?? "");
+      if (!batchId || !pizzaId || !date || !slotId) {
+        return jsonResponse({ error: "batchId, pizzaId, date, and slotId are required" }, 400);
       }
 
-      const result = await createTryPieHold(storage, batchId, pizzaId);
+      const result = await createTryPieHold(storage, batchId, pizzaId, date, slotId);
       if (!result.ok) {
         return jsonResponse({ error: result.error }, result.status);
       }

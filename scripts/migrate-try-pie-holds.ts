@@ -49,6 +49,52 @@ async function main() {
       )
     `);
 
+    // Ephemeral 60s reservations only — old pie-level holds have no valid slot_id.
+    await client.query(`TRUNCATE try_pie_holds`);
+
+    await client.query(`
+      ALTER TABLE try_pie_holds ADD COLUMN IF NOT EXISTS date text
+    `);
+    await client.query(`
+      ALTER TABLE try_pie_holds ADD COLUMN IF NOT EXISTS service_date text
+    `);
+    await client.query(`
+      ALTER TABLE try_pie_holds ADD COLUMN IF NOT EXISTS slot_id varchar
+    `);
+
+    await client.query(`
+      UPDATE try_pie_holds
+      SET service_date = date
+      WHERE service_date IS NULL AND date IS NOT NULL
+    `);
+
+    await client.query(`DELETE FROM try_pie_holds WHERE service_date IS NULL OR slot_id IS NULL`);
+
+    await client.query(`
+      DELETE FROM try_pie_holds h
+      WHERE NOT EXISTS (
+        SELECT 1 FROM pickup_slots ps WHERE ps.slot_id = h.slot_id
+      )
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'try_pie_holds' AND column_name = 'date'
+        ) THEN
+          ALTER TABLE try_pie_holds DROP COLUMN date;
+        END IF;
+      END $$
+    `);
+
+    await client.query(`
+      ALTER TABLE try_pie_holds ALTER COLUMN service_date SET NOT NULL
+    `);
+    await client.query(`
+      ALTER TABLE try_pie_holds ALTER COLUMN slot_id SET NOT NULL
+    `);
+
     await client.query(`
       DO $$ BEGIN
         IF NOT EXISTS (
@@ -74,17 +120,33 @@ async function main() {
     `);
 
     await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'try_pie_holds_slot_id_pickup_slots_slot_id_fk'
+        ) THEN
+          ALTER TABLE try_pie_holds
+            ADD CONSTRAINT try_pie_holds_slot_id_pickup_slots_slot_id_fk
+            FOREIGN KEY (slot_id) REFERENCES pickup_slots(slot_id);
+        END IF;
+      END $$
+    `);
+
+    await client.query(`DROP INDEX IF EXISTS idx_try_pie_holds_batch_date_slot`);
+    await client.query(`
       CREATE INDEX IF NOT EXISTS idx_try_pie_holds_batch_pizza
       ON try_pie_holds(batch_id, pizza_id)
     `);
-
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_try_pie_holds_batch_date_slot
+      ON try_pie_holds(batch_id, service_date, slot_id)
+    `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_try_pie_holds_expires_at
       ON try_pie_holds(expires_at)
     `);
 
     await client.query("COMMIT");
-    console.log("Migration complete: try_pie_holds table");
+    console.log("Migration complete: try_pie_holds slot reservations");
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

@@ -13,30 +13,39 @@ export async function deleteExpiredTryPieHolds(db: AppDatabase): Promise<void> {
   await db.delete(schema.tryPieHolds).where(lt(schema.tryPieHolds.expiresAt, sql`now()`));
 }
 
-export async function countActiveTryPieHolds(
+export async function selectHeldSlotIds(
   db: AppDatabase,
   batchId: string,
-  pizzaId: string,
-): Promise<number> {
-  const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
+  serviceDate: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ slotId: schema.tryPieHolds.slotId })
     .from(schema.tryPieHolds)
     .where(
       and(
         eq(schema.tryPieHolds.batchId, batchId),
-        eq(schema.tryPieHolds.pizzaId, pizzaId),
+        eq(schema.tryPieHolds.serviceDate, serviceDate),
         gt(schema.tryPieHolds.expiresAt, sql`now()`),
       ),
     );
 
-  return Number(row?.count ?? 0);
+  return Array.from(new Set(rows.map((row) => row.slotId)));
 }
 
 export async function insertTryPieHold(
   db: AppDatabase,
   hold: InsertTryPieHold,
 ): Promise<TryPieHold> {
-  const [created] = await db.insert(schema.tryPieHolds).values(hold).returning();
+  const [created] = await db
+    .insert(schema.tryPieHolds)
+    .values({
+      batchId: hold.batchId,
+      pizzaId: hold.pizzaId,
+      serviceDate: hold.serviceDate,
+      slotId: hold.slotId,
+      expiresAt: hold.expiresAt,
+    })
+    .returning();
   return created;
 }
 

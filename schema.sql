@@ -152,6 +152,8 @@ CREATE TABLE IF NOT EXISTS "try_pie_holds" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"batch_id" varchar NOT NULL,
 	"pizza_id" varchar NOT NULL,
+	"service_date" text NOT NULL,
+	"slot_id" varchar NOT NULL,
 	"expires_at" timestamp NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
@@ -162,7 +164,11 @@ ALTER TABLE "try_pie_holds" ADD CONSTRAINT "try_pie_holds_batch_id_batches_id_fk
 ALTER TABLE "try_pie_holds" ADD CONSTRAINT "try_pie_holds_pizza_id_pizzas_id_fk"
 	FOREIGN KEY ("pizza_id") REFERENCES "pizzas"("id") ON DELETE no action ON UPDATE no action;
 
+ALTER TABLE "try_pie_holds" ADD CONSTRAINT "try_pie_holds_slot_id_pickup_slots_slot_id_fk"
+	FOREIGN KEY ("slot_id") REFERENCES "pickup_slots"("slot_id") ON DELETE no action ON UPDATE no action;
+
 CREATE INDEX IF NOT EXISTS "idx_try_pie_holds_batch_pizza" ON "try_pie_holds"("batch_id", "pizza_id");
+CREATE INDEX IF NOT EXISTS "idx_try_pie_holds_batch_date_slot" ON "try_pie_holds"("batch_id", "service_date", "slot_id");
 CREATE INDEX IF NOT EXISTS "idx_try_pie_holds_expires_at" ON "try_pie_holds"("expires_at");
 
 -- Pickup slot lists (e.g. a weekend service window) and their bookable time slots

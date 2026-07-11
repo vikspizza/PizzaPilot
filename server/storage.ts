@@ -41,11 +41,11 @@ import {
   upsertCustomer as upsertCustomerRecord,
 } from "./order-storage";
 import {
-  countActiveTryPieHolds as fetchActiveTryPieHoldCount,
   deleteExpiredTryPieHolds as purgeExpiredTryPieHolds,
   deleteTryPieHoldById as removeTryPieHoldById,
   insertTryPieHold as createTryPieHoldRecord,
   selectTryPieHoldById as fetchTryPieHoldById,
+  selectHeldSlotIds as fetchHeldSlotIds,
 } from "./try-pie-hold-storage";
 
 export interface IStorage {
@@ -116,7 +116,7 @@ export interface IStorage {
 
   // Try a Pie holds
   deleteExpiredTryPieHolds(): Promise<void>;
-  countActiveTryPieHolds(batchId: string, pizzaId: string): Promise<number>;
+  getHeldSlotIds(batchId: string, date: string): Promise<string[]>;
   createTryPieHold(hold: InsertTryPieHold): Promise<TryPieHold>;
   getTryPieHoldById(id: string): Promise<TryPieHold | undefined>;
   deleteTryPieHold(id: string): Promise<void>;
@@ -472,8 +472,7 @@ export class DatabaseStorage implements IStorage {
       );
 
     const orderedQuantity = Number(result?.total ?? 0);
-    const heldQuantity = await fetchActiveTryPieHoldCount(db, batchId, pizzaId);
-    return Math.max(0, batchPizza.maxQuantity - orderedQuantity - heldQuantity);
+    return Math.max(0, batchPizza.maxQuantity - orderedQuantity);
   }
 
   async isPizzaAvailableInBatch(batchId: string, pizzaId: string, quantity: number): Promise<boolean> {
@@ -485,8 +484,8 @@ export class DatabaseStorage implements IStorage {
     await purgeExpiredTryPieHolds(db);
   }
 
-  async countActiveTryPieHolds(batchId: string, pizzaId: string): Promise<number> {
-    return fetchActiveTryPieHoldCount(db, batchId, pizzaId);
+  async getHeldSlotIds(batchId: string, date: string): Promise<string[]> {
+    return fetchHeldSlotIds(db, batchId, date);
   }
 
   async createTryPieHold(hold: InsertTryPieHold): Promise<TryPieHold> {

@@ -42,11 +42,11 @@ import {
   upsertCustomer as upsertCustomerRecord,
 } from "./order-storage";
 import {
-  countActiveTryPieHolds as fetchActiveTryPieHoldCount,
   deleteExpiredTryPieHolds as purgeExpiredTryPieHolds,
   deleteTryPieHoldById as removeTryPieHoldById,
   insertTryPieHold as createTryPieHoldRecord,
   selectTryPieHoldById as fetchTryPieHoldById,
+  selectHeldSlotIds as fetchHeldSlotIds,
 } from "./try-pie-hold-storage";
 
 // Re-implement DatabaseStorage using Cloudflare-compatible db
@@ -394,8 +394,7 @@ class DatabaseStorage {
       );
 
     const orderedQuantity = Number(result?.total ?? 0);
-    const heldQuantity = await fetchActiveTryPieHoldCount(this.db, batchId, pizzaId);
-    return Math.max(0, batchPizza.maxQuantity - orderedQuantity - heldQuantity);
+    return Math.max(0, batchPizza.maxQuantity - orderedQuantity);
   }
 
   async isPizzaAvailableInBatch(batchId: string, pizzaId: string, quantity: number): Promise<boolean> {
@@ -407,8 +406,8 @@ class DatabaseStorage {
     await purgeExpiredTryPieHolds(this.db);
   }
 
-  async countActiveTryPieHolds(batchId: string, pizzaId: string): Promise<number> {
-    return fetchActiveTryPieHoldCount(this.db, batchId, pizzaId);
+  async getHeldSlotIds(batchId: string, date: string): Promise<string[]> {
+    return fetchHeldSlotIds(this.db, batchId, date);
   }
 
   async createTryPieHold(hold: InsertTryPieHold): Promise<TryPieHold> {

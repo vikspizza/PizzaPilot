@@ -21,8 +21,40 @@ export async function createTryPieHold(
   storage: IStorage,
   batchId: string,
   pizzaId: string,
+  date: string,
+  slotId: string,
 ): Promise<CreateTryPieHoldResult> {
   await storage.deleteExpiredTryPieHolds();
+
+  if (!batchId || !pizzaId || !date?.trim() || !slotId?.trim()) {
+    return { ok: false, status: 400, error: "batchId, pizzaId, date, and slotId are required" };
+  }
+
+  const batch = await storage.getBatchById(batchId);
+  if (!batch) {
+    return { ok: false, status: 404, error: "Batch not found" };
+  }
+  if (batch.serviceDate !== date) {
+    return { ok: false, status: 400, error: "Order date does not match batch service date." };
+  }
+
+  const orderBookedSlotIds = await storage.getBookedSlotIds(batchId, date);
+  if (orderBookedSlotIds.includes(slotId)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "That pickup time was just taken. Please choose another slot.",
+    };
+  }
+
+  const heldSlotIds = await storage.getHeldSlotIds(batchId, date);
+  if (heldSlotIds.includes(slotId)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "That pickup time was just taken. Please choose another slot.",
+    };
+  }
 
   const available = await storage.getAvailableQuantity(batchId, pizzaId);
   if (available < 1) {
@@ -37,6 +69,8 @@ export async function createTryPieHold(
   const hold = await storage.createTryPieHold({
     batchId,
     pizzaId,
+    serviceDate: date,
+    slotId,
     expiresAt,
   });
 
@@ -57,21 +91,28 @@ export async function validateTryPieHoldForOrder(
   holdId: string,
   batchId: string,
   pizzaId: string,
+  date: string,
+  slotId: string,
 ): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   const hold = await storage.getTryPieHoldById(holdId);
   if (!isTryPieHoldActive(hold)) {
     return {
       ok: false,
       status: 400,
-      error: "Your reservation timed out. Please close the form and try again.",
+      error: "Your reservation timed out. Please select a pickup time again.",
     };
   }
 
-  if (hold.batchId !== batchId || hold.pizzaId !== pizzaId) {
+  if (
+    hold.batchId !== batchId ||
+    hold.pizzaId !== pizzaId ||
+    hold.serviceDate !== date ||
+    hold.slotId !== slotId
+  ) {
     return {
       ok: false,
       status: 400,
-      error: "Your reservation is no longer valid. Please try again.",
+      error: "Your reservation is no longer valid. Please select a pickup time again.",
     };
   }
 

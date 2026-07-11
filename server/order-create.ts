@@ -69,8 +69,8 @@ export async function createOrderFromRequest(
       };
     }
 
-    const bookedSlotIds = await storage.getBookedSlotIds(order.batchId, order.date);
-    if (bookedSlotIds.includes(order.slotId)) {
+    const orderBookedSlotIds = await storage.getBookedSlotIds(order.batchId, order.date);
+    if (orderBookedSlotIds.includes(order.slotId)) {
       return {
         ok: false,
         status: 400,
@@ -78,18 +78,27 @@ export async function createOrderFromRequest(
       };
     }
 
-    let hasValidHold = false;
     if (orderRequest.holdId) {
       const holdResult = await validateTryPieHoldForOrder(
         storage,
         orderRequest.holdId,
         order.batchId,
         order.pizzaId,
+        order.date,
+        order.slotId,
       );
       if (!holdResult.ok) {
         return holdResult;
       }
-      hasValidHold = true;
+    } else {
+      const heldSlotIds = await storage.getHeldSlotIds(order.batchId, order.date);
+      if (heldSlotIds.includes(order.slotId)) {
+        return {
+          ok: false,
+          status: 400,
+          error: "That pickup time is no longer available. Please choose another slot.",
+        };
+      }
     }
 
     const isAvailable = await storage.isPizzaAvailableInBatch(
@@ -97,7 +106,7 @@ export async function createOrderFromRequest(
       order.pizzaId,
       orderRequest.quantity,
     );
-    if (!isAvailable && !hasValidHold) {
+    if (!isAvailable) {
       const available = await storage.getAvailableQuantity(order.batchId, order.pizzaId);
       return {
         ok: false,

@@ -654,11 +654,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const batchId = String(req.body?.batchId ?? "");
       const pizzaId = String(req.body?.pizzaId ?? "");
-      if (!batchId || !pizzaId) {
-        return res.status(400).json({ error: "batchId and pizzaId are required" });
+      const date = String(req.body?.date ?? "");
+      const slotId = String(req.body?.slotId ?? "");
+      if (!batchId || !pizzaId || !date || !slotId) {
+        return res.status(400).json({ error: "batchId, pizzaId, date, and slotId are required" });
       }
 
-      const result = await createTryPieHold(storage, batchId, pizzaId);
+      const result = await createTryPieHold(storage, batchId, pizzaId, date, slotId);
       if (!result.ok) {
         return res.status(result.status).json({ error: result.error });
       }

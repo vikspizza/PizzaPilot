@@ -208,6 +208,8 @@ export const tryPieHolds = pgTable("try_pie_holds", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   batchId: varchar("batch_id").references(() => batches.id, { onDelete: "cascade" }).notNull(),
   pizzaId: varchar("pizza_id").references(() => pizzas.id).notNull(),
+  serviceDate: text("service_date").notNull(),
+  slotId: varchar("slot_id").references(() => pickupSlots.slotId).notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

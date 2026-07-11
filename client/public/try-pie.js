@@ -3,14 +3,17 @@
   let context = null;
   /** @type {string | null} */
   let holdId = null;
+  /** @type {string | null} */
+  let heldSlotId = null;
   /** @type {ReturnType<typeof setInterval> | null} */
   let holdTimerId = null;
   /** @type {number | null} */
   let holdEndsAtMs = null;
-  let holdExpired = false;
+  let holdInFlight = false;
+  let isPopulatingSlots = false;
 
   const HOLD_TIMEOUT_MESSAGE =
-    "Your reservation timed out. Please close this window and try again.";
+    "Your reservation timed out. Please select a pickup time again.";
 
   const btn = document.getElementById("try-pie-btn");
   const modal = document.getElementById("try-pie-modal");
@@ -165,6 +168,7 @@
   async function releaseHold() {
     const currentHoldId = holdId;
     holdId = null;
+    heldSlotId = null;
     if (!currentHoldId) {
       return;
     }
@@ -178,31 +182,24 @@
     }
   }
 
-  function setHoldExpiredState() {
-    holdExpired = true;
-    form.classList.add("try-pie-form-expired");
-    timerEl.textContent = "Reservation expired";
-    timerEl.classList.add("try-pie-timer-expired");
-    setError(HOLD_TIMEOUT_MESSAGE);
-    updateSubmitState();
-  }
-
   function resetHoldState() {
-    holdExpired = false;
     form.classList.remove("try-pie-form-expired");
     timerEl.classList.remove("try-pie-timer-expired");
     setError("");
   }
 
   async function expireHold() {
-    if (holdExpired) {
+    if (!holdId && !holdEndsAtMs) {
       return;
     }
 
     clearHoldTimer();
     await releaseHold();
-    setHoldExpiredState();
+    /** @type {HTMLSelectElement} */ (slotSelect).value = "";
+    setError(HOLD_TIMEOUT_MESSAGE);
+    timerEl.textContent = "";
     await loadContext();
+    updateSubmitState();
   }
 
   function startHoldTimer(expiresInSeconds) {
@@ -229,11 +226,8 @@
   }
 
   function validateForm() {
-    if (holdExpired) {
-      return HOLD_TIMEOUT_MESSAGE;
-    }
-    if (!holdId) {
-      return "Your reservation is missing. Please close this window and try again.";
+    if (holdInFlight) {
+      return "Reserving pickup time…";
     }
 
     const name = /** @type {HTMLInputElement} */ (nameInput).value.trim();
@@ -243,6 +237,9 @@
     const selectedOption = /** @type {HTMLSelectElement} */ (slotSelect).selectedOptions[0];
 
     if (!slotId || selectedOption?.disabled) {
+      return "Please select an available pickup time.";
+    }
+    if (!holdId) {
       return "Please select an available pickup time.";
     }
     if (name.length < 2) {
@@ -267,18 +264,19 @@
   function populateSlots(slots, bookedSlotIds) {
     const select = /** @type {HTMLSelectElement} */ (slotSelect);
     const booked = new Set(bookedSlotIds ?? []);
+    isPopulatingSlots = true;
     select.innerHTML = "";
 
     const placeholder = document.createElement("option");
     placeholder.value = "";
     placeholder.textContent = slots.length ? "Select pickup time" : "No pickup times available";
     placeholder.disabled = true;
-    placeholder.selected = true;
+    placeholder.selected = !heldSlotId;
     select.appendChild(placeholder);
 
     for (const slot of slots) {
       const option = document.createElement("option");
-      const isBooked = booked.has(slot.slotId);
+      const isBooked = booked.has(slot.slotId) && slot.slotId !== heldSlotId;
       option.value = slot.slotId;
       option.textContent = isBooked
         ? `${formatPickupTime(slot.pickupTime)} (Taken)`
@@ -287,9 +285,13 @@
       if (isBooked) {
         option.className = "try-pie-slot-taken";
       }
+      if (slot.slotId === heldSlotId) {
+        option.selected = true;
+      }
       select.appendChild(option);
     }
 
+    isPopulatingSlots = false;
     updateSubmitState();
   }
 
@@ -327,8 +329,8 @@
     }
   }
 
-  async function reservePie() {
-    if (!context || !context.available) {
+  async function reserveSlot(slotId) {
+    if (!context || !context.available || !context.date) {
       return false;
     }
 
@@ -338,24 +340,62 @@
       body: JSON.stringify({
         batchId: context.batch.id,
         pizzaId: context.pizzaId,
+        date: context.date,
+        slotId,
       }),
     });
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setStatus(
+      setError(
         typeof data.error === "string"
           ? data.error
-          : "Sorry, this pie just sold out. Please try again later.",
+          : "That pickup time is no longer available. Please choose another slot.",
       );
-      /** @type {HTMLButtonElement} */ (btn).disabled = true;
-      await loadContext();
       return false;
     }
 
     holdId = data.holdId;
+    heldSlotId = slotId;
     startHoldTimer(Number(data.expiresInSeconds) || 60);
     return true;
+  }
+
+  async function handleSlotChange() {
+    if (isPopulatingSlots) {
+      return;
+    }
+
+    const slotId = /** @type {HTMLSelectElement} */ (slotSelect).value;
+
+    clearHoldTimer();
+    await releaseHold();
+    resetHoldState();
+    timerEl.textContent = "";
+
+    if (!slotId) {
+      updateSubmitState();
+      return;
+    }
+
+    if (!context || !context.available || holdInFlight) {
+      updateSubmitState();
+      return;
+    }
+
+    holdInFlight = true;
+    updateSubmitState();
+
+    try {
+      const reserved = await reserveSlot(slotId);
+      if (!reserved) {
+        /** @type {HTMLSelectElement} */ (slotSelect).value = "";
+        await loadContext();
+      }
+    } finally {
+      holdInFlight = false;
+      updateSubmitState();
+    }
   }
 
   function openModal() {
@@ -385,12 +425,9 @@
       return;
     }
 
+    clearHoldTimer();
+    await releaseHold();
     resetHoldState();
-    const reserved = await reservePie();
-    if (!reserved) {
-      return;
-    }
-
     openModal();
   });
 
@@ -405,10 +442,14 @@
     updateSubmitState();
   });
 
-  for (const el of [nameInput, emailInput, slotSelect]) {
+  for (const el of [nameInput, emailInput]) {
     el.addEventListener("input", updateSubmitState);
     el.addEventListener("change", updateSubmitState);
   }
+
+  slotSelect.addEventListener("change", () => {
+    void handleSlotChange();
+  });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -461,6 +502,7 @@
 
       clearHoldTimer();
       holdId = null;
+      heldSlotId = null;
       modal.hidden = true;
       document.body.classList.remove("try-pie-modal-open");
       resetHoldState();
