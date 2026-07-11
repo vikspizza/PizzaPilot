@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Pizza, type Order, type Batch, type BatchPizza, type SlotList, type PickupSlot } from "@/lib/api";
 import { Layout } from "@/components/layout";
@@ -81,17 +81,23 @@ export default function Admin() {
     );
   }
 
-  return <AdminDashboard />;
+  return <AdminDashboard onSessionExpired={() => setIsAuthenticated(false)} />;
 }
 
-function AdminDashboard() {
+function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: orders, isLoading: ordersLoading } = useQuery({
+  const { data: orders, isLoading: ordersLoading, error: ordersError } = useQuery({
     queryKey: ["orders"],
     queryFn: () => api.getOrders(),
   });
+
+  useEffect(() => {
+    if (ordersError instanceof Error && ordersError.message.includes("session expired")) {
+      onSessionExpired();
+    }
+  }, [ordersError, onSessionExpired]);
 
   const { data: pizzas, isLoading: pizzasLoading, error: pizzasError } = useQuery({
     queryKey: ["pizzas", "all"],

@@ -14,6 +14,13 @@ function jsonHeaders(): HeadersInit {
   };
 }
 
+function handleAdminUnauthorized(res: Response): void {
+  if (res.status === 401) {
+    clearAdminToken();
+    throw new Error("Your kitchen session expired. Please sign in again.");
+  }
+}
+
 export interface User {
   id: string;
   name: string;
@@ -261,6 +268,7 @@ export const api = {
     const res = await fetch(url, {
       headers: phone ? undefined : adminAuthHeaders(),
     });
+    handleAdminUnauthorized(res);
     if (!res.ok) throw new Error("Failed to fetch orders");
     return res.json();
   },
@@ -377,6 +385,7 @@ export const api = {
       headers: jsonHeaders(),
       body: JSON.stringify(batch),
     });
+    handleAdminUnauthorized(res);
     if (!res.ok) {
       const error = await res.json();
       throw new Error(error.error || "Failed to create batch");
@@ -469,9 +478,7 @@ export const api = {
   },
 
   getSlotLists: async (): Promise<SlotList[]> => {
-    const res = await fetch("/api/slot-lists", {
-      headers: adminAuthHeaders(),
-    });
+    const res = await fetch("/api/slot-lists");
     if (!res.ok) throw new Error("Failed to fetch slot lists");
     return res.json();
   },

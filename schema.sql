@@ -147,6 +147,24 @@ CREATE INDEX IF NOT EXISTS "idx_otp_codes_phone" ON "otp_codes"("phone");
 CREATE INDEX IF NOT EXISTS "idx_otp_codes_expires_at" ON "otp_codes"("expires_at");
 CREATE INDEX IF NOT EXISTS "idx_customers_phone" ON "customers"("phone");
 
+-- Temporary holds while a customer completes Try a Pie checkout
+CREATE TABLE IF NOT EXISTS "try_pie_holds" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"batch_id" varchar NOT NULL,
+	"pizza_id" varchar NOT NULL,
+	"expires_at" timestamp NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+
+ALTER TABLE "try_pie_holds" ADD CONSTRAINT "try_pie_holds_batch_id_batches_id_fk"
+	FOREIGN KEY ("batch_id") REFERENCES "batches"("id") ON DELETE cascade ON UPDATE no action;
+
+ALTER TABLE "try_pie_holds" ADD CONSTRAINT "try_pie_holds_pizza_id_pizzas_id_fk"
+	FOREIGN KEY ("pizza_id") REFERENCES "pizzas"("id") ON DELETE no action ON UPDATE no action;
+
+CREATE INDEX IF NOT EXISTS "idx_try_pie_holds_batch_pizza" ON "try_pie_holds"("batch_id", "pizza_id");
+CREATE INDEX IF NOT EXISTS "idx_try_pie_holds_expires_at" ON "try_pie_holds"("expires_at");
+
 -- Pickup slot lists (e.g. a weekend service window) and their bookable time slots
 CREATE TABLE IF NOT EXISTS "slot_lists" (
 	"slot_list_id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

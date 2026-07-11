@@ -435,6 +435,25 @@ body.try-pie-modal-open {
   text-align: center;
 }
 
+.try-pie-timer {
+  margin: -0.35rem 0 1rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--landing-gold);
+}
+
+.try-pie-timer.try-pie-timer-expired {
+  color: #ff6b6b;
+}
+
+.try-pie-form.try-pie-form-expired {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .try-pie-form {
   width: 100%;
   display: flex;
@@ -455,6 +474,12 @@ body.try-pie-modal-open {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.75);
+}
+
+.try-pie-label-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .try-pie-form input,

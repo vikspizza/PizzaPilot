@@ -7,6 +7,7 @@ import { createOrderFromRequest } from "../../server/order-create";
 import { z } from "zod";
 import { sendSms } from "../../server/sms";
 import { getTryPieContext } from "../../server/try-pie-context";
+import { createTryPieHold, releaseTryPieHold } from "../../server/try-pie-hold";
 import { normalizePickupTime } from "../../shared/pickup-time";
 import {
   createAdminToken,
@@ -560,6 +561,35 @@ export async function onRequest(context: any) {
     if (path === "/api/try-pie/context" && method === "GET") {
       const context = await getTryPieContext(storage);
       return jsonResponse(context);
+    }
+
+    if (path === "/api/try-pie/hold" && method === "POST") {
+      const body = await parseBody(request);
+      const batchId = String(body.batchId ?? "");
+      const pizzaId = String(body.pizzaId ?? "");
+      if (!batchId || !pizzaId) {
+        return jsonResponse({ error: "batchId and pizzaId are required" }, 400);
+      }
+
+      const result = await createTryPieHold(storage, batchId, pizzaId);
+      if (!result.ok) {
+        return jsonResponse({ error: result.error }, result.status);
+      }
+
+      return jsonResponse(
+        {
+          holdId: result.holdId,
+          expiresAt: result.expiresAt,
+          expiresInSeconds: result.expiresInSeconds,
+        },
+        201,
+      );
+    }
+
+    if (method === "DELETE" && /^\/api\/try-pie\/hold\/[^/]+$/.test(path)) {
+      const holdId = path.split("/").pop()!;
+      await releaseTryPieHold(storage, holdId);
+      return new Response(null, { status: 204 });
     }
 
     // ===== PICKUP SLOTS (public) =====

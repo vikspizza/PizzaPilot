@@ -3,6 +3,7 @@ import { formatPickupTime } from "@shared/pickup-time";
 
 const LOGO_FILENAME = "viks-pizza-logo2.png";
 const LOGO_CONTENT_ID = "viks-logo";
+const PIZZA_CONTENT_ID = "pizza-image";
 
 export type OrderEmailConfig = {
   resendApiKey?: string;
@@ -49,35 +50,80 @@ function logoUrlFor(baseUrl: string): string {
   return `${baseUrl.replace(/\/$/, "")}/${LOGO_FILENAME}`;
 }
 
-async function loadLogoAttachment(logoBaseUrl: string): Promise<ResendAttachment | null> {
-  const url = logoUrlFor(logoBaseUrl);
+function resolveAssetUrl(baseUrl: string, url: string | null | undefined): string | null {
+  if (!url?.trim()) {
+    return null;
+  }
 
+  const trimmed = url.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
+  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return `${baseUrl.replace(/\/$/, "")}${path}`;
+}
+
+async function loadImageAttachment(
+  imageUrl: string,
+  contentId: string,
+  filename: string,
+): Promise<ResendAttachment | null> {
   try {
-    const response = await fetch(url);
+    const response = await fetch(imageUrl);
     if (!response.ok) {
-      console.error(`[EMAIL] Could not load logo from ${url}: ${response.status}`);
+      console.error(`[EMAIL] Could not load image from ${imageUrl}: ${response.status}`);
       return null;
     }
 
     const bytes = new Uint8Array(await response.arrayBuffer());
     return {
-      filename: LOGO_FILENAME,
+      filename,
       content: bytesToBase64(bytes),
-      content_id: LOGO_CONTENT_ID,
+      content_id: contentId,
     };
   } catch (error) {
-    console.error(`[EMAIL] Could not load logo from ${url}:`, error);
+    console.error(`[EMAIL] Could not load image from ${imageUrl}:`, error);
     return null;
   }
+}
+
+async function loadLogoAttachment(logoBaseUrl: string): Promise<ResendAttachment | null> {
+  return loadImageAttachment(logoUrlFor(logoBaseUrl), LOGO_CONTENT_ID, LOGO_FILENAME);
+}
+
+async function loadPizzaImageAttachment(
+  assetBaseUrl: string,
+  pizza: Pizza,
+): Promise<{ attachment: ResendAttachment; src: string } | null> {
+  const imageUrl = resolveAssetUrl(assetBaseUrl, pizza.imageUrl);
+  if (!imageUrl) {
+    return null;
+  }
+
+  const filename = imageUrl.split("/").pop() || "pizza.jpg";
+  const attachment = await loadImageAttachment(imageUrl, PIZZA_CONTENT_ID, filename);
+  if (!attachment) {
+    return null;
+  }
+
+  return {
+    attachment,
+    src: `cid:${PIZZA_CONTENT_ID}`,
+  };
 }
 
 function buildOrderConfirmationHtml(
   order: OrderWithCustomer,
   pizza: Pizza,
   logoSrc: string,
+  pizzaImageSrc: string | null,
 ): string {
   const pickupTime = formatPickupTime(order.pickupSlot.pickupTime);
   const serviceDate = formatServiceDate(order.date);
+  const pizzaImageMarkup = pizzaImageSrc
+    ? `<img src="${pizzaImageSrc}" alt="${pizza.name}" width="280" style="display:block;width:100%;max-width:280px;height:auto;margin:0 auto 14px;border-radius:10px;" />`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -101,7 +147,7 @@ function buildOrderConfirmationHtml(
               <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#ffb000;font-weight:700;">Order confirmed</p>
               <h1 style="margin:0 0 16px;font-size:24px;line-height:1.2;color:#ffffff;">Thanks, ${order.customer.name}!</h1>
               <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:rgba(255,255,255,0.82);">
-                Your pie is reserved. Pay when you pick up.
+                Your pie is reserved. Our treat!
               </p>
             </td>
           </tr>
@@ -111,6 +157,7 @@ function buildOrderConfirmationHtml(
                 <tr>
                   <td style="padding:18px 16px;">
                     <p style="margin:0 0 10px;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:#ffb000;font-weight:700;">Pickup details</p>
+                    ${pizzaImageMarkup}
                     <p style="margin:0 0 8px;font-size:16px;font-weight:700;color:#ffffff;">${pizza.name}</p>
                     <p style="margin:0 0 6px;font-size:15px;line-height:1.5;color:rgba(255,255,255,0.85);"><strong>Date:</strong> ${serviceDate}</p>
                     <p style="margin:0 0 6px;font-size:15px;line-height:1.5;color:rgba(255,255,255,0.85);"><strong>Time:</strong> ${pickupTime} PT</p>
@@ -150,9 +197,15 @@ export async function sendOrderConfirmationEmail(
   const logoAttachment = await loadLogoAttachment(logoBaseUrl);
   const logoSrc = logoAttachment ? `cid:${LOGO_CONTENT_ID}` : logoUrlFor(logoBaseUrl);
 
+  const pizzaImage = await loadPizzaImageAttachment(logoBaseUrl, pizza);
+  const pizzaImageSrc = pizzaImage?.src ?? resolveAssetUrl(logoBaseUrl, pizza.imageUrl);
+
   const subject = `Your Vik's Pizza order is confirmed`;
-  const html = buildOrderConfirmationHtml(order, pizza, logoSrc);
+  const html = buildOrderConfirmationHtml(order, pizza, logoSrc, pizzaImageSrc);
   const from = config.emailFrom || "Vik's Pizza <onboarding@resend.dev>";
+  const attachments = [logoAttachment, pizzaImage?.attachment].filter(
+    (attachment): attachment is ResendAttachment => Boolean(attachment),
+  );
 
   if (!config.resendApiKey) {
     console.log("[EMAIL] Resend not configured — order confirmation not sent");
@@ -172,7 +225,7 @@ export async function sendOrderConfirmationEmail(
       to: [to],
       subject,
       html,
-      ...(logoAttachment ? { attachments: [logoAttachment] } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
     }),
   });
 

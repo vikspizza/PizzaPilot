@@ -50,10 +50,6 @@ export function requiresAdminAuth(
     return true;
   }
 
-  if (pathname === "/api/slot-lists" && method === "GET") {
-    return true;
-  }
-
   if (pathname === "/api/slot-lists" && method === "POST") {
     return true;
   }

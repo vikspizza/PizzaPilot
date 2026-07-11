@@ -1,6 +1,7 @@
 import { insertOrderSchema, type CreateOrderRequest, type OrderWithCustomer } from "@shared/schema";
 import type { IStorage } from "./storage";
 import { sendOrderConfirmationEmail, type OrderEmailConfig } from "./order-email";
+import { validateTryPieHoldForOrder } from "./try-pie-hold";
 
 export type CreateOrderResult =
   | { ok: true; order: OrderWithCustomer }
@@ -77,12 +78,26 @@ export async function createOrderFromRequest(
       };
     }
 
+    let hasValidHold = false;
+    if (orderRequest.holdId) {
+      const holdResult = await validateTryPieHoldForOrder(
+        storage,
+        orderRequest.holdId,
+        order.batchId,
+        order.pizzaId,
+      );
+      if (!holdResult.ok) {
+        return holdResult;
+      }
+      hasValidHold = true;
+    }
+
     const isAvailable = await storage.isPizzaAvailableInBatch(
       order.batchId,
       order.pizzaId,
       orderRequest.quantity,
     );
-    if (!isAvailable) {
+    if (!isAvailable && !hasValidHold) {
       const available = await storage.getAvailableQuantity(order.batchId, order.pizzaId);
       return {
         ok: false,
@@ -117,6 +132,10 @@ export async function createOrderFromRequest(
   }
 
   const newOrder = await storage.createOrder(order);
+
+  if (orderRequest.holdId) {
+    await storage.deleteTryPieHold(orderRequest.holdId);
+  }
 
   try {
     await sendOrderConfirmationEmail(newOrder, pizza, options);

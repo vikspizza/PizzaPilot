@@ -1,6 +1,16 @@
 (function () {
   /** @type {{ available: false, soldOut?: boolean } | { available: true, batch: { id: string }, pizzaId: string, date: string, slots: Array<{ slotId: string, pickupTime: string }>, bookedSlotIds: string[] } | null} */
   let context = null;
+  /** @type {string | null} */
+  let holdId = null;
+  /** @type {ReturnType<typeof setInterval> | null} */
+  let holdTimerId = null;
+  /** @type {number | null} */
+  let holdEndsAtMs = null;
+  let holdExpired = false;
+
+  const HOLD_TIMEOUT_MESSAGE =
+    "Your reservation timed out. Please close this window and try again.";
 
   const btn = document.getElementById("try-pie-btn");
   const modal = document.getElementById("try-pie-modal");
@@ -15,6 +25,7 @@
   const errorEl = document.getElementById("try-pie-error");
   const successEl = document.getElementById("try-pie-success");
   const statusEl = document.getElementById("try-pie-status");
+  const timerEl = document.getElementById("try-pie-timer");
   const upcomingBatchEl = document.getElementById("upcoming-batch");
   const upcomingBatchHeadingEl = document.getElementById("upcoming-batch-heading");
   const upcomingBatchPizzasEl = document.getElementById("upcoming-batch-pizzas");
@@ -32,6 +43,7 @@
     !submitBtn ||
     !errorEl ||
     !successEl ||
+    !timerEl ||
     !upcomingBatchEl ||
     !upcomingBatchHeadingEl ||
     !upcomingBatchPizzasEl
@@ -59,6 +71,13 @@
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;");
+  }
+
+  function formatCountdown(totalSeconds) {
+    const seconds = Math.max(0, totalSeconds);
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    return `${minutes}:${String(remainder).padStart(2, "0")}`;
   }
 
   function renderUpcomingBatch(data) {
@@ -116,6 +135,91 @@
     }
   }
 
+  function updateTimerDisplay() {
+    if (!holdEndsAtMs) {
+      timerEl.textContent = "";
+      timerEl.classList.remove("try-pie-timer-expired");
+      return;
+    }
+
+    const secondsLeft = Math.ceil((holdEndsAtMs - Date.now()) / 1000);
+    if (secondsLeft <= 0) {
+      timerEl.textContent = "Reservation expired";
+      timerEl.classList.add("try-pie-timer-expired");
+      return;
+    }
+
+    timerEl.textContent = `Complete your order in ${formatCountdown(secondsLeft)}`;
+    timerEl.classList.remove("try-pie-timer-expired");
+  }
+
+  function clearHoldTimer() {
+    if (holdTimerId) {
+      clearInterval(holdTimerId);
+      holdTimerId = null;
+    }
+    holdEndsAtMs = null;
+    updateTimerDisplay();
+  }
+
+  async function releaseHold() {
+    const currentHoldId = holdId;
+    holdId = null;
+    if (!currentHoldId) {
+      return;
+    }
+
+    try {
+      await fetch(`/api/try-pie/hold/${encodeURIComponent(currentHoldId)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      // Best-effort release; server also expires holds automatically.
+    }
+  }
+
+  function setHoldExpiredState() {
+    holdExpired = true;
+    form.classList.add("try-pie-form-expired");
+    timerEl.textContent = "Reservation expired";
+    timerEl.classList.add("try-pie-timer-expired");
+    setError(HOLD_TIMEOUT_MESSAGE);
+    updateSubmitState();
+  }
+
+  function resetHoldState() {
+    holdExpired = false;
+    form.classList.remove("try-pie-form-expired");
+    timerEl.classList.remove("try-pie-timer-expired");
+    setError("");
+  }
+
+  async function expireHold() {
+    if (holdExpired) {
+      return;
+    }
+
+    clearHoldTimer();
+    await releaseHold();
+    setHoldExpiredState();
+    await loadContext();
+  }
+
+  function startHoldTimer(expiresInSeconds) {
+    clearHoldTimer();
+    holdEndsAtMs = Date.now() + expiresInSeconds * 1000;
+    updateTimerDisplay();
+
+    holdTimerId = setInterval(() => {
+      const secondsLeft = Math.ceil((holdEndsAtMs - Date.now()) / 1000);
+      if (secondsLeft <= 0) {
+        void expireHold();
+        return;
+      }
+      updateTimerDisplay();
+    }, 250);
+  }
+
   function normalizePhone(value) {
     return value.replace(/\D/g, "").slice(0, 10);
   }
@@ -125,6 +229,13 @@
   }
 
   function validateForm() {
+    if (holdExpired) {
+      return HOLD_TIMEOUT_MESSAGE;
+    }
+    if (!holdId) {
+      return "Your reservation is missing. Please close this window and try again.";
+    }
+
     const name = /** @type {HTMLInputElement} */ (nameInput).value.trim();
     const phone = normalizePhone(/** @type {HTMLInputElement} */ (phoneInput).value);
     const email = /** @type {HTMLInputElement} */ (emailInput).value.trim();
@@ -216,6 +327,37 @@
     }
   }
 
+  async function reservePie() {
+    if (!context || !context.available) {
+      return false;
+    }
+
+    const res = await fetch("/api/try-pie/hold", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        batchId: context.batch.id,
+        pizzaId: context.pizzaId,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setStatus(
+        typeof data.error === "string"
+          ? data.error
+          : "Sorry, this pie just sold out. Please try again later.",
+      );
+      /** @type {HTMLButtonElement} */ (btn).disabled = true;
+      await loadContext();
+      return false;
+    }
+
+    holdId = data.holdId;
+    startHoldTimer(Number(data.expiresInSeconds) || 60);
+    return true;
+  }
+
   function openModal() {
     modal.hidden = false;
     document.body.classList.add("try-pie-modal-open");
@@ -223,9 +365,13 @@
     /** @type {HTMLInputElement} */ (nameInput).focus();
   }
 
-  function closeModal() {
+  async function closeModal() {
+    clearHoldTimer();
+    await releaseHold();
+    resetHoldState();
     modal.hidden = true;
     document.body.classList.remove("try-pie-modal-open");
+    await loadContext();
   }
 
   /** @type {HTMLButtonElement} */ (btn).addEventListener("click", async () => {
@@ -239,10 +385,18 @@
       return;
     }
 
+    resetHoldState();
+    const reserved = await reservePie();
+    if (!reserved) {
+      return;
+    }
+
     openModal();
   });
 
-  closeBtn.addEventListener("click", closeModal);
+  closeBtn.addEventListener("click", () => {
+    void closeModal();
+  });
 
   /** @type {HTMLInputElement} */ (phoneInput).addEventListener("input", (event) => {
     const input = /** @type {HTMLInputElement} */ (event.target);
@@ -266,7 +420,7 @@
       return;
     }
 
-    if (!context || !context.available) {
+    if (!context || !context.available || !holdId) {
       setError("Ordering is no longer available. Please refresh the page.");
       return;
     }
@@ -281,6 +435,7 @@
       customerName: /** @type {HTMLInputElement} */ (nameInput).value.trim(),
       customerEmail: /** @type {HTMLInputElement} */ (emailInput).value.trim(),
       customerPhone: normalizePhone(/** @type {HTMLInputElement} */ (phoneInput).value),
+      holdId,
     };
 
     /** @type {HTMLButtonElement} */ (submitBtn).disabled = true;
@@ -304,7 +459,11 @@
         throw new Error(message);
       }
 
-      closeModal();
+      clearHoldTimer();
+      holdId = null;
+      modal.hidden = true;
+      document.body.classList.remove("try-pie-modal-open");
+      resetHoldState();
       form.reset();
       successEl.hidden = false;
       successEl.textContent =

@@ -40,7 +40,8 @@
         &times;
       </button>
       <h2 class="try-pie-modal-title" id="try-pie-modal-title">Try a Pie</h2>
-      <p class="try-pie-modal-subtitle">Reserve your pie. Pay when you pick up.</p>
+      <p class="try-pie-modal-subtitle">Reserve to enjoy your free pie on us!</p>
+      <p class="try-pie-timer" id="try-pie-timer" aria-live="polite"></p>
       <form id="try-pie-form" class="try-pie-form">
         <label class="try-pie-field">
           <span class="try-pie-label">Pickup time</span>
@@ -67,7 +68,7 @@
           />
         </label>
         <label class="try-pie-field">
-          <span class="try-pie-label">Email</span>
+          <span class="try-pie-label">Email <span class="try-pie-label-hint">(for order confirmation)</span></span>
           <input id="try-pie-email" name="email" type="email" autocomplete="email" required />
         </label>
         <button type="submit" class="try-pie-submit" id="try-pie-submit" disabled>Submit order</button>

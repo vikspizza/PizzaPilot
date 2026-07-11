@@ -6,6 +6,7 @@ import { createOrderFromRequest } from "./order-create";
 import { z } from "zod";
 import { sendSms } from "./sms";
 import { getTryPieContext } from "./try-pie-context";
+import { createTryPieHold, releaseTryPieHold } from "./try-pie-hold";
 import { normalizePickupTime } from "@shared/pickup-time";
 import {
   createAdminToken,
@@ -646,6 +647,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error fetching try-pie context:", error);
       res.status(500).json({ error: "Failed to load ordering context" });
+    }
+  });
+
+  app.post("/api/try-pie/hold", async (req, res) => {
+    try {
+      const batchId = String(req.body?.batchId ?? "");
+      const pizzaId = String(req.body?.pizzaId ?? "");
+      if (!batchId || !pizzaId) {
+        return res.status(400).json({ error: "batchId and pizzaId are required" });
+      }
+
+      const result = await createTryPieHold(storage, batchId, pizzaId);
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
+      }
+
+      res.status(201).json({
+        holdId: result.holdId,
+        expiresAt: result.expiresAt,
+        expiresInSeconds: result.expiresInSeconds,
+      });
+    } catch (error) {
+      console.error("Error creating try-pie hold:", error);
+      res.status(500).json({ error: "Failed to reserve pie" });
+    }
+  });
+
+  app.delete("/api/try-pie/hold/:id", async (req, res) => {
+    try {
+      await releaseTryPieHold(storage, req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error releasing try-pie hold:", error);
+      res.status(500).json({ error: "Failed to release reservation" });
     }
   });
 
