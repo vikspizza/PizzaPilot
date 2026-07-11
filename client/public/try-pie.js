@@ -366,14 +366,14 @@
       return;
     }
 
-    const slotId = /** @type {HTMLSelectElement} */ (slotSelect).value;
+    const intendedSlotId = /** @type {HTMLSelectElement} */ (slotSelect).value;
 
     clearHoldTimer();
     await releaseHold();
     resetHoldState();
     timerEl.textContent = "";
 
-    if (!slotId) {
+    if (!intendedSlotId) {
       updateSubmitState();
       return;
     }
@@ -387,11 +387,26 @@
     updateSubmitState();
 
     try {
-      const reserved = await reserveSlot(slotId);
+      await loadContext();
+
+      if (!context || !context.available) {
+        return;
+      }
+
+      if (context.bookedSlotIds.includes(intendedSlotId)) {
+        setError("That pickup time was just taken. Please choose another slot.");
+        /** @type {HTMLSelectElement} */ (slotSelect).value = "";
+        return;
+      }
+
+      const reserved = await reserveSlot(intendedSlotId);
       if (!reserved) {
         /** @type {HTMLSelectElement} */ (slotSelect).value = "";
         await loadContext();
+        return;
       }
+
+      await loadContext();
     } finally {
       holdInFlight = false;
       updateSubmitState();

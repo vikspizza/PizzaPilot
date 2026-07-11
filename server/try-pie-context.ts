@@ -1,5 +1,6 @@
 import { comparePickupTime } from "@shared/pickup-time";
 import type { Batch, PickupSlot } from "@shared/schema";
+import { getHeldSlotIds } from "./try-pie-hold";
 import type { IStorage } from "./storage";
 
 export type TryPieBatchPizza = {
@@ -89,7 +90,7 @@ export async function getTryPieContext(storage: IStorage): Promise<TryPieContext
     comparePickupTime(a.pickupTime, b.pickupTime),
   );
   const orderBookedSlotIds = await storage.getBookedSlotIds(batch.id, batch.serviceDate);
-  const heldSlotIds = await storage.getHeldSlotIds(batch.id, batch.serviceDate);
+  const heldSlotIds = getHeldSlotIds(batch.id, batch.serviceDate);
   const bookedSlotIds = Array.from(new Set([...orderBookedSlotIds, ...heldSlotIds]));
 
   return {

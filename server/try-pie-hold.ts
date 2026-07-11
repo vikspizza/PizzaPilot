@@ -1,21 +1,17 @@
-import { TRY_PIE_HOLD_SECONDS, type TryPieHold } from "@shared/schema";
+import {
+  TRY_PIE_HOLD_SECONDS,
+  createSlotHold,
+  getHeldSlotIds,
+  getSlotHoldById,
+  isSlotHeld,
+  isSlotHoldActive,
+  releaseSlotHold,
+} from "./try-pie-hold-cache";
 import type { IStorage } from "./storage";
 
 export type CreateTryPieHoldResult =
   | { ok: true; holdId: string; expiresAt: string; expiresInSeconds: number }
   | { ok: false; status: number; error: string };
-
-export function isTryPieHoldActive(hold: TryPieHold | undefined): hold is TryPieHold {
-  if (!hold) {
-    return false;
-  }
-
-  const expiresMs =
-    hold.expiresAt instanceof Date
-      ? hold.expiresAt.getTime()
-      : new Date(hold.expiresAt).getTime();
-  return expiresMs > Date.now();
-}
 
 export async function createTryPieHold(
   storage: IStorage,
@@ -24,8 +20,6 @@ export async function createTryPieHold(
   date: string,
   slotId: string,
 ): Promise<CreateTryPieHoldResult> {
-  await storage.deleteExpiredTryPieHolds();
-
   if (!batchId || !pizzaId || !date?.trim() || !slotId?.trim()) {
     return { ok: false, status: 400, error: "batchId, pizzaId, date, and slotId are required" };
   }
@@ -47,8 +41,7 @@ export async function createTryPieHold(
     };
   }
 
-  const heldSlotIds = await storage.getHeldSlotIds(batchId, date);
-  if (heldSlotIds.includes(slotId)) {
+  if (isSlotHeld(batchId, date, slotId)) {
     return {
       ok: false,
       status: 409,
@@ -65,37 +58,34 @@ export async function createTryPieHold(
     };
   }
 
-  const expiresAt = new Date(Date.now() + TRY_PIE_HOLD_SECONDS * 1000);
-  const hold = await storage.createTryPieHold({
+  const hold = createSlotHold({
     batchId,
     pizzaId,
     serviceDate: date,
     slotId,
-    expiresAt,
   });
 
   return {
     ok: true,
     holdId: hold.id,
-    expiresAt: hold.expiresAt.toISOString(),
+    expiresAt: new Date(hold.expiresAt).toISOString(),
     expiresInSeconds: TRY_PIE_HOLD_SECONDS,
   };
 }
 
-export async function releaseTryPieHold(storage: IStorage, holdId: string): Promise<void> {
-  await storage.deleteTryPieHold(holdId);
+export function releaseTryPieHold(holdId: string): void {
+  releaseSlotHold(holdId);
 }
 
-export async function validateTryPieHoldForOrder(
-  storage: IStorage,
+export function validateTryPieHoldForOrder(
   holdId: string,
   batchId: string,
   pizzaId: string,
   date: string,
   slotId: string,
-): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  const hold = await storage.getTryPieHoldById(holdId);
-  if (!isTryPieHoldActive(hold)) {
+): { ok: true } | { ok: false; status: number; error: string } {
+  const hold = getSlotHoldById(holdId);
+  if (!isSlotHoldActive(hold)) {
     return {
       ok: false,
       status: 400,
@@ -118,3 +108,5 @@ export async function validateTryPieHoldForOrder(
 
   return { ok: true };
 }
+
+export { getHeldSlotIds };

@@ -678,7 +678,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/try-pie/hold/:id", async (req, res) => {
     try {
-      await releaseTryPieHold(storage, req.params.id);
+      await releaseTryPieHold(req.params.id);
       res.status(204).send();
     } catch (error) {
       console.error("Error releasing try-pie hold:", error);

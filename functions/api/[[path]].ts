@@ -590,7 +590,7 @@ export async function onRequest(context: any) {
 
     if (method === "DELETE" && /^\/api\/try-pie\/hold\/[^/]+$/.test(path)) {
       const holdId = path.split("/").pop()!;
-      await releaseTryPieHold(storage, holdId);
+      await releaseTryPieHold(holdId);
       return new Response(null, { status: 204 });
     }
 

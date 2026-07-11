@@ -203,27 +203,6 @@ export const insertBatchPizzaSchema = createInsertSchema(batchPizzas).omit({
 export type InsertBatchPizza = z.infer<typeof insertBatchPizzaSchema>;
 export type BatchPizza = typeof batchPizzas.$inferSelect;
 
-// Temporary holds while a customer completes Try a Pie checkout
-export const tryPieHolds = pgTable("try_pie_holds", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  batchId: varchar("batch_id").references(() => batches.id, { onDelete: "cascade" }).notNull(),
-  pizzaId: varchar("pizza_id").references(() => pizzas.id).notNull(),
-  serviceDate: text("service_date").notNull(),
-  slotId: varchar("slot_id").references(() => pickupSlots.slotId).notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const insertTryPieHoldSchema = createInsertSchema(tryPieHolds).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type InsertTryPieHold = z.infer<typeof insertTryPieHoldSchema>;
-export type TryPieHold = typeof tryPieHolds.$inferSelect;
-
-export const TRY_PIE_HOLD_SECONDS = 60;
-
 // Pickup slot lists and bookable time slots
 export const slotLists = pgTable("slot_lists", {
   slotListId: varchar("slot_list_id").primaryKey().default(sql`gen_random_uuid()`),
