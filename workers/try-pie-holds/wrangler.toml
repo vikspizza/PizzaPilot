@@ -9,4 +9,4 @@ class_name = "TryPieHoldCoordinator"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["TryPieHoldCoordinator"]
+new_sqlite_classes = ["TryPieHoldCoordinator"]
