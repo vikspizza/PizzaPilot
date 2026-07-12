@@ -6,10 +6,12 @@
   "scripts": {
     "dev:client": "vite dev --port 5000",
     "dev": "NODE_ENV=development tsx watch server/index.ts",
-    "dev:cf": "npm run build:cf && wrangler pages dev dist/public --compatibility-date=2024-01-01",
+    "dev:cf": "npm run build:cf && wrangler pages dev dist/public --compatibility-date=2024-01-01 --do TRY_PIE_HOLDS=TryPieHoldCoordinator@pizzapilot-try-pie-holds",
+    "dev:holds": "wrangler dev --config workers/try-pie-holds/wrangler.toml",
     "build": "tsx script/build.ts",
     "build:cf": "npm exec -- tsx script/build-cf.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
+    "deploy:holds": "wrangler deploy --config workers/try-pie-holds/wrangler.toml",
     "deploy:cf": "npm run build:cf && wrangler pages deploy dist/public --project-name=pizzapilot",
     "check": "tsc",
     "db:push": "drizzle-kit push",

@@ -3,11 +3,29 @@ compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "dist/public"
 
+# Durable Objects live in a separate Worker (Pages cannot define DO classes).
+# Deploy: npm run deploy:holds
+# Bind in dashboard OR keep this block for wrangler pages deploy/dev.
+[[durable_objects.bindings]]
+name = "TRY_PIE_HOLDS"
+class_name = "TryPieHoldCoordinator"
+script_name = "pizzapilot-try-pie-holds"
+
 [env.production]
 vars = { NODE_ENV = "production" }
 
+[[env.production.durable_objects.bindings]]
+name = "TRY_PIE_HOLDS"
+class_name = "TryPieHoldCoordinator"
+script_name = "pizzapilot-try-pie-holds"
+
 [env.preview]
 vars = { NODE_ENV = "preview" }
+
+[[env.preview.durable_objects.bindings]]
+name = "TRY_PIE_HOLDS"
+class_name = "TryPieHoldCoordinator"
+script_name = "pizzapilot-try-pie-holds"
 
 # Secrets (DATABASE_URL, etc.) are NOT stored in this file.
 # Local:  .dev.vars (gitignored)

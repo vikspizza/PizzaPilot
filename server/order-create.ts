@@ -2,6 +2,7 @@ import { insertOrderSchema, type CreateOrderRequest, type OrderWithCustomer } fr
 import type { IStorage } from "./storage";
 import { sendOrderConfirmationEmail, type OrderEmailConfig } from "./order-email";
 import { getHeldSlotIds, releaseTryPieHold, validateTryPieHoldForOrder } from "./try-pie-hold";
+import type { HoldStore } from "./try-pie-hold-store";
 
 export type CreateOrderResult =
   | { ok: true; order: OrderWithCustomer }
@@ -11,6 +12,7 @@ export async function createOrderFromRequest(
   storage: IStorage,
   orderRequest: CreateOrderRequest,
   options: OrderEmailConfig,
+  holdStore?: HoldStore,
 ): Promise<CreateOrderResult> {
   const customer = await storage.upsertCustomer({
     phone: orderRequest.customerPhone,
@@ -79,18 +81,19 @@ export async function createOrderFromRequest(
     }
 
     if (orderRequest.holdId) {
-      const holdResult = validateTryPieHoldForOrder(
+      const holdResult = await validateTryPieHoldForOrder(
         orderRequest.holdId,
         order.batchId,
         order.pizzaId,
         order.date,
         order.slotId,
+        holdStore,
       );
       if (!holdResult.ok) {
         return holdResult;
       }
     } else {
-      const heldSlotIds = getHeldSlotIds(order.batchId, order.date);
+      const heldSlotIds = await getHeldSlotIds(order.batchId, order.date, holdStore);
       if (heldSlotIds.includes(order.slotId)) {
         return {
           ok: false,
@@ -142,7 +145,7 @@ export async function createOrderFromRequest(
   const newOrder = await storage.createOrder(order);
 
   if (orderRequest.holdId) {
-    releaseTryPieHold(orderRequest.holdId);
+    await releaseTryPieHold(orderRequest.holdId, holdStore);
   }
 
   try {

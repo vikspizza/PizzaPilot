@@ -8,6 +8,7 @@ import { z } from "zod";
 import { sendSms } from "../../server/sms";
 import { getTryPieContext } from "../../server/try-pie-context";
 import { createTryPieHold, releaseTryPieHold } from "../../server/try-pie-hold";
+import { resolveHoldStore } from "../../server/try-pie-hold-store";
 import { normalizePickupTime } from "../../shared/pickup-time";
 import {
   createAdminToken,
@@ -64,6 +65,7 @@ export async function onRequest(context: any) {
   // Create database connection and storage instance
   const db = getDb(databaseUrl);
   const storage = new DatabaseStorage(db);
+  const holdStore = resolveHoldStore(env.TRY_PIE_HOLDS);
 
   try {
     if (path === "/api/admin/login" && method === "POST") {
@@ -245,7 +247,7 @@ export async function onRequest(context: any) {
         emailFrom: env.EMAIL_FROM,
         siteUrl,
         logoBaseUrl: requestOrigin,
-      });
+      }, holdStore);
 
       if (!result.ok) {
         return jsonResponse({ error: result.error }, result.status);
@@ -559,7 +561,7 @@ export async function onRequest(context: any) {
 
     // ===== TRY A PIE (landing page) =====
     if (path === "/api/try-pie/context" && method === "GET") {
-      const context = await getTryPieContext(storage);
+      const context = await getTryPieContext(storage, holdStore);
       return jsonResponse(context);
     }
 
@@ -573,7 +575,7 @@ export async function onRequest(context: any) {
         return jsonResponse({ error: "batchId, pizzaId, date, and slotId are required" }, 400);
       }
 
-      const result = await createTryPieHold(storage, batchId, pizzaId, date, slotId);
+      const result = await createTryPieHold(storage, batchId, pizzaId, date, slotId, holdStore);
       if (!result.ok) {
         return jsonResponse({ error: result.error }, result.status);
       }
@@ -590,7 +592,7 @@ export async function onRequest(context: any) {
 
     if (method === "DELETE" && /^\/api\/try-pie\/hold\/[^/]+$/.test(path)) {
       const holdId = path.split("/").pop()!;
-      await releaseTryPieHold(holdId);
+      await releaseTryPieHold(holdId, holdStore);
       return new Response(null, { status: 204 });
     }
 
