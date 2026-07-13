@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Pizza, type Order, type Batch, type BatchPizza, type SlotList, type PickupSlot } from "@/lib/api";
 import { Layout } from "@/components/layout";
@@ -17,7 +17,19 @@ import { Loader2, Lock, Check, X, ChefHat, Package, Truck, XCircle, Plus, Edit, 
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext } from "@/components/ui/pagination";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { comparePickupTime, formatPickupTime, normalizePickupTime } from "@/lib/pacific-time";
+import { comparePickupTime, formatPickupTime, normalizePickupTime, todayPacificDateString } from "@/lib/pacific-time";
+
+function formatBatchServiceDate(serviceDate: string): string {
+  const [year, month, day] = serviceDate.split("-").map(Number);
+  if ([year, month, day].some((n) => Number.isNaN(n))) {
+    return serviceDate;
+  }
+  return format(new Date(year, month - 1, day), "EEE, MMM d, yyyy");
+}
+
+function formatBatchOptionLabel(batch: Batch): string {
+  return `Batch #${batch.batchNumber} — ${formatBatchServiceDate(batch.serviceDate)}`;
+}
 
 export default function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => api.hasAdminSession());
@@ -87,17 +99,83 @@ export default function Admin() {
 function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
 
   const { data: orders, isLoading: ordersLoading, error: ordersError } = useQuery({
     queryKey: ["orders"],
     queryFn: () => api.getOrders(),
   });
 
+  const { data: batches, isLoading: batchesLoading } = useQuery({
+    queryKey: ["batches"],
+    queryFn: api.getBatches,
+  });
+
+  const batchesWithOrders = useMemo(() => {
+    const batchIdsWithOrders = new Set(
+      (orders ?? [])
+        .map((order) => order.batchId)
+        .filter((batchId): batchId is string => Boolean(batchId)),
+    );
+
+    return [...(batches ?? [])]
+      .filter((batch) => batchIdsWithOrders.has(batch.id))
+      .sort((a, b) => b.batchNumber - a.batchNumber);
+  }, [batches, orders]);
+
+  useEffect(() => {
+    if (batchesWithOrders.length === 0) {
+      if (selectedBatchId) {
+        setSelectedBatchId("");
+      }
+      return;
+    }
+
+    if (selectedBatchId && batchesWithOrders.some((batch) => batch.id === selectedBatchId)) {
+      return;
+    }
+
+    const today = todayPacificDateString();
+    const upcoming = [...batchesWithOrders]
+      .filter((batch) => batch.serviceDate >= today)
+      .sort((a, b) => a.serviceDate.localeCompare(b.serviceDate))[0];
+
+    setSelectedBatchId((upcoming ?? batchesWithOrders[0]).id);
+  }, [batchesWithOrders, selectedBatchId]);
+
   useEffect(() => {
     if (ordersError instanceof Error && ordersError.message.includes("session expired")) {
       onSessionExpired();
     }
   }, [ordersError, onSessionExpired]);
+
+  const filteredOrders = useMemo(() => {
+    if (!orders) {
+      return [];
+    }
+
+    return orders.filter((order) => {
+      if (selectedBatchId && order.batchId !== selectedBatchId) {
+        return false;
+      }
+      if (selectedStatus !== "all" && order.status !== selectedStatus) {
+        return false;
+      }
+      return true;
+    });
+  }, [orders, selectedBatchId, selectedStatus]);
+
+  const orderStatusOptions: Array<Order["status"] | "all"> = [
+    "all",
+    "pending",
+    "confirmed",
+    "cooking",
+    "ready",
+    "delivered",
+    "completed",
+    "cancelled",
+  ];
 
   const { data: pizzas, isLoading: pizzasLoading, error: pizzasError } = useQuery({
     queryKey: ["pizzas", "all"],
@@ -191,14 +269,62 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
 
           <TabsContent value="orders">
             <Card>
-              <CardHeader>
-                <CardTitle>Recent Orders</CardTitle>
+              <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between space-y-0">
+                <CardTitle>Orders</CardTitle>
+                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end lg:w-auto">
+                  <div className="flex w-full flex-col gap-2 sm:min-w-[18rem]">
+                    <Label htmlFor="orders-batch-filter" className="text-sm text-muted-foreground">
+                      Batch
+                    </Label>
+                    <Select
+                      value={selectedBatchId || undefined}
+                      onValueChange={setSelectedBatchId}
+                      disabled={ordersLoading || batchesLoading || batchesWithOrders.length === 0}
+                    >
+                      <SelectTrigger id="orders-batch-filter">
+                        <SelectValue
+                          placeholder={
+                            ordersLoading || batchesLoading
+                              ? "Loading…"
+                              : "No batches with orders"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {batchesWithOrders.map((batch) => (
+                          <SelectItem key={batch.id} value={batch.id}>
+                            {formatBatchOptionLabel(batch)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex w-full flex-col gap-2 sm:min-w-[12rem]">
+                    <Label htmlFor="orders-status-filter" className="text-sm text-muted-foreground">
+                      Status
+                    </Label>
+                    <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                      <SelectTrigger id="orders-status-filter">
+                        <SelectValue placeholder="All statuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {orderStatusOptions.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status === "all" ? "All statuses" : status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
-                {ordersLoading ? (
+                {ordersLoading || batchesLoading ? (
                   <Loader2 className="animate-spin" />
-                ) : orders?.length === 0 ? (
+                ) : batchesWithOrders.length === 0 ? (
                   <p className="text-muted-foreground">No orders yet.</p>
+                ) : filteredOrders.length === 0 ? (
+                  <p className="text-muted-foreground">No orders match these filters.</p>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -213,7 +339,7 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {orders?.map((order) => {
+                      {filteredOrders.map((order) => {
                         const nextStatus = getNextStatus(order.status);
                         const canTransitionOrder = canTransition(order.status);
                         const canCancelOrder = canCancel(order.status);

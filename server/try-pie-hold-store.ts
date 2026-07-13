@@ -67,56 +67,109 @@ function getCoordinatorStub(ns: DurableObjectNamespaceLike): DurableObjectStubLi
   return ns.get(ns.idFromName(COORDINATOR_NAME));
 }
 
+function isDurableUnavailable(status: number): boolean {
+  return status === 503 || status === 502 || status === 504;
+}
+
+let warnedDurableUnavailable = false;
+
+function warnDurableUnavailable(status: number): void {
+  if (warnedDurableUnavailable) {
+    return;
+  }
+  warnedDurableUnavailable = true;
+  console.warn(
+    `TRY_PIE_HOLDS Durable Object unavailable (${status}); using in-memory holds. ` +
+      `For shared local holds, run \`npm run dev:holds\` alongside Pages.`,
+  );
+}
+
 export function createDurableHoldStore(ns: DurableObjectNamespaceLike): HoldStore {
   return {
     async create(input) {
-      const stub = getCoordinatorStub(ns);
-      const res = await stub.fetch("https://hold/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      if (res.status === 409) {
-        return { ok: false, conflict: true };
+      try {
+        const stub = getCoordinatorStub(ns);
+        const res = await stub.fetch("https://hold/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        });
+        if (res.status === 409) {
+          return { ok: false, conflict: true };
+        }
+        if (isDurableUnavailable(res.status)) {
+          warnDurableUnavailable(res.status);
+          return memoryHoldStore.create(input);
+        }
+        if (!res.ok) {
+          throw new Error(`Durable hold create failed: ${res.status}`);
+        }
+        const hold = (await res.json()) as SlotHold;
+        return { ok: true, hold };
+      } catch (error) {
+        console.warn("Durable hold create error; using memory fallback:", error);
+        return memoryHoldStore.create(input);
       }
-      if (!res.ok) {
-        throw new Error(`Durable hold create failed: ${res.status}`);
-      }
-      const hold = (await res.json()) as SlotHold;
-      return { ok: true, hold };
     },
 
     async release(holdId) {
-      const stub = getCoordinatorStub(ns);
-      await stub.fetch(`https://hold/holds/${encodeURIComponent(holdId)}`, {
-        method: "DELETE",
-      });
+      try {
+        const stub = getCoordinatorStub(ns);
+        const res = await stub.fetch(`https://hold/holds/${encodeURIComponent(holdId)}`, {
+          method: "DELETE",
+        });
+        if (isDurableUnavailable(res.status)) {
+          warnDurableUnavailable(res.status);
+          await memoryHoldStore.release(holdId);
+        }
+      } catch (error) {
+        console.warn("Durable hold release error; using memory fallback:", error);
+        await memoryHoldStore.release(holdId);
+      }
     },
 
     async get(holdId) {
-      const stub = getCoordinatorStub(ns);
-      const res = await stub.fetch(`https://hold/holds/${encodeURIComponent(holdId)}`);
-      if (res.status === 404) {
-        return undefined;
+      try {
+        const stub = getCoordinatorStub(ns);
+        const res = await stub.fetch(`https://hold/holds/${encodeURIComponent(holdId)}`);
+        if (res.status === 404) {
+          return undefined;
+        }
+        if (isDurableUnavailable(res.status)) {
+          warnDurableUnavailable(res.status);
+          return memoryHoldStore.get(holdId);
+        }
+        if (!res.ok) {
+          throw new Error(`Durable hold get failed: ${res.status}`);
+        }
+        return (await res.json()) as SlotHold;
+      } catch (error) {
+        console.warn("Durable hold get error; using memory fallback:", error);
+        return memoryHoldStore.get(holdId);
       }
-      if (!res.ok) {
-        throw new Error(`Durable hold get failed: ${res.status}`);
-      }
-      return (await res.json()) as SlotHold;
     },
 
     async getHeldSlotIds(batchId, serviceDate, excludeHoldId) {
-      const stub = getCoordinatorStub(ns);
-      const params = new URLSearchParams({ batchId, serviceDate });
-      if (excludeHoldId) {
-        params.set("excludeHoldId", excludeHoldId);
+      try {
+        const stub = getCoordinatorStub(ns);
+        const params = new URLSearchParams({ batchId, serviceDate });
+        if (excludeHoldId) {
+          params.set("excludeHoldId", excludeHoldId);
+        }
+        const res = await stub.fetch(`https://hold/held-slots?${params.toString()}`);
+        if (isDurableUnavailable(res.status)) {
+          warnDurableUnavailable(res.status);
+          return memoryHoldStore.getHeldSlotIds(batchId, serviceDate, excludeHoldId);
+        }
+        if (!res.ok) {
+          throw new Error(`Durable held-slots failed: ${res.status}`);
+        }
+        const data = (await res.json()) as { slotIds: string[] };
+        return data.slotIds;
+      } catch (error) {
+        console.warn("Durable held-slots error; using memory fallback:", error);
+        return memoryHoldStore.getHeldSlotIds(batchId, serviceDate, excludeHoldId);
       }
-      const res = await stub.fetch(`https://hold/held-slots?${params.toString()}`);
-      if (!res.ok) {
-        throw new Error(`Durable held-slots failed: ${res.status}`);
-      }
-      const data = (await res.json()) as { slotIds: string[] };
-      return data.slotIds;
     },
 
     async isSlotHeld(batchId, serviceDate, slotId, excludeHoldId) {

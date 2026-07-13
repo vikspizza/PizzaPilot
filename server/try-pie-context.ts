@@ -94,7 +94,12 @@ export async function getTryPieContext(
     comparePickupTime(a.pickupTime, b.pickupTime),
   );
   const orderBookedSlotIds = await storage.getBookedSlotIds(batch.id, batch.serviceDate);
-  const heldSlotIds = await getHeldSlotIds(batch.id, batch.serviceDate, holdStore);
+  let heldSlotIds: string[] = [];
+  try {
+    heldSlotIds = await getHeldSlotIds(batch.id, batch.serviceDate, holdStore);
+  } catch (error) {
+    console.warn("Failed to load held slots; continuing without holds:", error);
+  }
   const bookedSlotIds = Array.from(new Set([...orderBookedSlotIds, ...heldSlotIds]));
 
   return {
