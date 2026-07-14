@@ -20,7 +20,7 @@ async function addPapiChuloPizza() {
     name: "Papi Chulo Potato",
     description: "Thin potato slices brushed with taco chili oil, roasted corn, red onions, sliced cherry tomatoes, mozzarella, cotija. Finished with fresh cilantro, spicy papi chulo sauce and tangy sour cream drizzle.",
     tags: ["fusion", "spicy", "veg"],
-    imageUrl: "/attached_assets/generated_images/papi_chulo_potato_pizza_with_corn_and_cotija.png",
+    imageUrl: "https://media.vikspizza.com/papi_chulo_potato_pizza_with_corn_and_cotija.png",
     active: true,
     soldOut: false,
     price: "24.00",

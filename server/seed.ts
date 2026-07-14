@@ -1,12 +1,14 @@
 import { db } from "./db";
 import * as schema from "@shared/schema";
 
+const MEDIA_BASE = "https://media.vikspizza.com";
+
 const PIZZA_IMAGES: Record<string, string> = {
-  "truffle": "/attached_assets/generated_images/white_pizza_with_truffle_and_mushrooms.png",
-  "crustgpt": "/attached_assets/generated_images/pesto_pizza_with_ricotta_and_arugula.png",
-  "senor": "/attached_assets/generated_images/taco_style_pizza_with_corn_and_avocado.png",
-  "papichulo": "/attached_assets/generated_images/papi_chulo_potato_pizza_with_corn_and_cotija.png",
-  "george": "/attached_assets/generated_images/george_crustanza_pizza_placeholder.png",
+  "truffle": `${MEDIA_BASE}/white_pizza_with_truffle_and_mushrooms.png`,
+  "crustgpt": `${MEDIA_BASE}/pesto_pizza_with_ricotta_and_arugula.png`,
+  "senor": `${MEDIA_BASE}/taco_style_pizza_with_corn_and_avocado.png`,
+  "papichulo": `${MEDIA_BASE}/papi_chulo_potato_pizza_with_corn_and_cotija.png`,
+  "george": `${MEDIA_BASE}/george_crustanza_pizza_placeholder.png`,
 };
 
 async function seed() {
