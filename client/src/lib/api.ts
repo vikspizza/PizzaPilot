@@ -88,6 +88,14 @@ export interface BatchPizza {
   pizza?: Pizza;
 }
 
+export interface TryPieInvite {
+  id: string;
+  code: string;
+  batchId: string;
+  usedAt: string | null;
+  createdAt: string;
+}
+
 export interface SlotList {
   slotListId: string;
   slotListName: string;
@@ -445,7 +453,30 @@ export const api = {
       method: "DELETE",
       headers: adminAuthHeaders(),
     });
+    handleAdminUnauthorized(res);
     if (!res.ok) throw new Error("Failed to delete batch pizza");
+  },
+
+  getBatchInvites: async (batchId: string): Promise<TryPieInvite[]> => {
+    const res = await fetch(`/api/batches/${batchId}/invites`, {
+      headers: adminAuthHeaders(),
+    });
+    handleAdminUnauthorized(res);
+    if (!res.ok) throw new Error("Failed to fetch invite codes");
+    return res.json();
+  },
+
+  createBatchInvite: async (batchId: string): Promise<TryPieInvite> => {
+    const res = await fetch(`/api/batches/${batchId}/invites`, {
+      method: "POST",
+      headers: jsonHeaders(),
+    });
+    handleAdminUnauthorized(res);
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || "Failed to create invite code");
+    }
+    return res.json();
   },
 
   getBatchAvailability: async (batchId: string, pizzaId: string): Promise<{ available: number }> => {

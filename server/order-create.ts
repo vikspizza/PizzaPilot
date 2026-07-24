@@ -3,6 +3,8 @@ import type { IStorage } from "./storage";
 import { sendOrderConfirmationEmail, type OrderEmailConfig } from "./order-email";
 import { getHeldSlotIds, releaseTryPieHold, validateTryPieHoldForOrder } from "./try-pie-hold";
 import type { HoldStore } from "./try-pie-hold-store";
+import { validateUnusedTryPieInvite } from "./try-pie-invite";
+import { normalizeInviteCode } from "./try-pie-invite-storage";
 
 export type CreateOrderResult =
   | { ok: true; order: OrderWithCustomer }
@@ -47,6 +49,8 @@ export async function createOrderFromRequest(
   if (!pizza.active) {
     return { ok: false, status: 400, error: "This pizza is not currently available." };
   }
+
+  let claimedInviteCode: string | null = null;
 
   if (order.batchId) {
     const batch = await storage.getBatchById(order.batchId);
@@ -103,18 +107,46 @@ export async function createOrderFromRequest(
       }
     }
 
-    const isAvailable = await storage.isPizzaAvailableInBatch(
-      order.batchId,
-      order.pizzaId,
-      orderRequest.quantity,
-    );
-    if (!isAvailable) {
-      const available = await storage.getAvailableQuantity(order.batchId, order.pizzaId);
-      return {
-        ok: false,
-        status: 400,
-        error: `Sorry! Only ${available} ${available === 1 ? "pizza" : "pizzas"} available for this batch.`,
-      };
+    let bypassSoldOut = false;
+    if (orderRequest.inviteCode) {
+      const inviteResult = await validateUnusedTryPieInvite(
+        storage,
+        orderRequest.inviteCode,
+        order.batchId,
+      );
+      if (!inviteResult.ok) {
+        return inviteResult;
+      }
+
+      const claimed = await storage.claimTryPieInvite(
+        orderRequest.inviteCode,
+        order.batchId,
+      );
+      if (!claimed) {
+        return {
+          ok: false,
+          status: 410,
+          error: "That invite code has already been used.",
+        };
+      }
+      claimedInviteCode = normalizeInviteCode(orderRequest.inviteCode);
+      bypassSoldOut = true;
+    }
+
+    if (!bypassSoldOut) {
+      const isAvailable = await storage.isPizzaAvailableInBatch(
+        order.batchId,
+        order.pizzaId,
+        orderRequest.quantity,
+      );
+      if (!isAvailable) {
+        const available = await storage.getAvailableQuantity(order.batchId, order.pizzaId);
+        return {
+          ok: false,
+          status: 400,
+          error: `Sorry! Only ${available} ${available === 1 ? "pizza" : "pizzas"} available for this batch.`,
+        };
+      }
     }
   } else {
     const bookedSlotIds = await storage.getBookedSlotIds(null, order.date);
@@ -142,7 +174,15 @@ export async function createOrderFromRequest(
     }
   }
 
-  const newOrder = await storage.createOrder(order);
+  let newOrder: OrderWithCustomer;
+  try {
+    newOrder = await storage.createOrder(order);
+  } catch (error) {
+    if (claimedInviteCode) {
+      await storage.unclaimTryPieInvite(claimedInviteCode);
+    }
+    throw error;
+  }
 
   if (orderRequest.holdId) {
     await releaseTryPieHold(orderRequest.holdId, holdStore);

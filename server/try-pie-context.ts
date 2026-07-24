@@ -58,17 +58,12 @@ function mapBatchPizzas(
   }));
 }
 
-export async function getTryPieContext(
+async function buildAvailableContext(
   storage: IStorage,
-  holdStore?: HoldStore,
+  batch: Batch,
+  batchPizzas: Awaited<ReturnType<IStorage["getBatchPizzas"]>>,
+  options: { bypassSoldOut?: boolean; holdStore?: HoldStore } = {},
 ): Promise<TryPieContext> {
-  const batch = await getUpcomingBatch(storage);
-
-  if (!batch) {
-    return { batch: null, pizzas: [], available: false };
-  }
-
-  const batchPizzas = await storage.getBatchPizzas(batch.id);
   const pizzas = mapBatchPizzas(batchPizzas);
   const batchSummary = {
     id: batch.id,
@@ -85,18 +80,19 @@ export async function getTryPieContext(
   }
 
   const anyAvailable = batchPizzas.some((entry) => entry.available > 0);
-  if (!anyAvailable) {
+  if (!anyAvailable && !options.bypassSoldOut) {
     return { batch: batchSummary, pizzas, available: false, soldOut: true };
   }
 
-  const selected = batchPizzas.find((entry) => entry.available > 0) ?? batchPizzas[0];
+  const selected =
+    batchPizzas.find((entry) => entry.available > 0) ?? batchPizzas[0];
   const slots = (await storage.getPickupSlots(batch.slotListId)).sort((a, b) =>
     comparePickupTime(a.pickupTime, b.pickupTime),
   );
   const orderBookedSlotIds = await storage.getBookedSlotIds(batch.id, batch.serviceDate);
   let heldSlotIds: string[] = [];
   try {
-    heldSlotIds = await getHeldSlotIds(batch.id, batch.serviceDate, holdStore);
+    heldSlotIds = await getHeldSlotIds(batch.id, batch.serviceDate, options.holdStore);
   } catch (error) {
     console.warn("Failed to load held slots; continuing without holds:", error);
   }
@@ -112,4 +108,36 @@ export async function getTryPieContext(
     slots,
     bookedSlotIds,
   };
+}
+
+export async function getTryPieContext(
+  storage: IStorage,
+  holdStore?: HoldStore,
+): Promise<TryPieContext> {
+  const batch = await getUpcomingBatch(storage);
+
+  if (!batch) {
+    return { batch: null, pizzas: [], available: false };
+  }
+
+  const batchPizzas = await storage.getBatchPizzas(batch.id);
+  return buildAvailableContext(storage, batch, batchPizzas, { holdStore });
+}
+
+/** Full ordering context for a batch, ignoring sold-out pie counts (invite redeem). */
+export async function getTryPieContextForBatch(
+  storage: IStorage,
+  batchId: string,
+  holdStore?: HoldStore,
+): Promise<TryPieContext | null> {
+  const batch = await storage.getBatchById(batchId);
+  if (!batch) {
+    return null;
+  }
+
+  const batchPizzas = await storage.getBatchPizzas(batch.id);
+  return buildAvailableContext(storage, batch, batchPizzas, {
+    bypassSoldOut: true,
+    holdStore,
+  });
 }

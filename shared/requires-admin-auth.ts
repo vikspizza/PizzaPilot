@@ -50,6 +50,10 @@ export function requiresAdminAuth(
     return true;
   }
 
+  if (/^\/api\/batches\/[^/]+\/invites$/.test(pathname) && (method === "GET" || method === "POST")) {
+    return true;
+  }
+
   if (pathname === "/api/slot-lists" && method === "POST") {
     return true;
   }

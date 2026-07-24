@@ -6,8 +6,10 @@ import { insertPizzaSchema, insertOrderSchema, insertReviewSchema, insertSetting
 import { createOrderFromRequest } from "../../server/order-create";
 import { z } from "zod";
 import { sendSms } from "../../server/sms";
-import { getTryPieContext } from "../../server/try-pie-context";
+import { getTryPieContext, getTryPieContextForBatch } from "../../server/try-pie-context";
 import { createTryPieHold, releaseTryPieHold } from "../../server/try-pie-hold";
+import { createTryPieInviteForBatch, validateUnusedTryPieInvite } from "../../server/try-pie-invite";
+import { normalizeInviteCode } from "../../server/try-pie-invite-storage";
 import { resolveHoldStore } from "../../server/try-pie-hold-store";
 import { normalizePickupTime } from "../../shared/pickup-time";
 import {
@@ -565,17 +567,56 @@ export async function onRequest(context: any) {
       return jsonResponse(context);
     }
 
+    if (path === "/api/try-pie/invite/redeem" && method === "POST") {
+      const body = await parseBody(request);
+      const code = normalizeInviteCode(String(body.code ?? ""));
+      if (!code) {
+        return jsonResponse({ error: "Enter a valid invite code." }, 400);
+      }
+
+      const invite = await storage.getTryPieInviteByCode(code);
+      if (!invite) {
+        return jsonResponse({ error: "That invite code is not valid." }, 404);
+      }
+
+      const inviteResult = await validateUnusedTryPieInvite(storage, code, invite.batchId);
+      if (!inviteResult.ok) {
+        return jsonResponse({ error: inviteResult.error }, inviteResult.status);
+      }
+
+      const context = await getTryPieContextForBatch(storage, invite.batchId, holdStore);
+      if (!context || !context.available) {
+        return jsonResponse(
+          { error: "This batch is not ready for ordering yet. Please check back later." },
+          400,
+        );
+      }
+
+      return jsonResponse({ ...context, inviteCode: code });
+    }
+
     if (path === "/api/try-pie/hold" && method === "POST") {
       const body = await parseBody(request);
       const batchId = String(body.batchId ?? "");
       const pizzaId = String(body.pizzaId ?? "");
       const date = String(body.date ?? "");
       const slotId = String(body.slotId ?? "");
+      const inviteCode = body.inviteCode
+        ? normalizeInviteCode(String(body.inviteCode))
+        : undefined;
       if (!batchId || !pizzaId || !date || !slotId) {
         return jsonResponse({ error: "batchId, pizzaId, date, and slotId are required" }, 400);
       }
 
-      const result = await createTryPieHold(storage, batchId, pizzaId, date, slotId, holdStore);
+      const result = await createTryPieHold(
+        storage,
+        batchId,
+        pizzaId,
+        date,
+        slotId,
+        holdStore,
+        inviteCode ? { inviteCode } : undefined,
+      );
       if (!result.ok) {
         return jsonResponse({ error: result.error }, result.status);
       }
@@ -594,6 +635,27 @@ export async function onRequest(context: any) {
       const holdId = path.split("/").pop()!;
       await releaseTryPieHold(holdId, holdStore);
       return new Response(null, { status: 204 });
+    }
+
+    if (
+      /^\/api\/batches\/[^/]+\/invites$/.test(path) &&
+      (method === "GET" || method === "POST")
+    ) {
+      const batchId = path.split("/").filter(Boolean)[2];
+      if (method === "GET") {
+        const batch = await storage.getBatchById(batchId);
+        if (!batch) {
+          return jsonResponse({ error: "Batch not found" }, 404);
+        }
+        const invites = await storage.getTryPieInvitesByBatchId(batch.id);
+        return jsonResponse(invites);
+      }
+
+      const result = await createTryPieInviteForBatch(storage, batchId);
+      if (!result.ok) {
+        return jsonResponse({ error: result.error }, result.status);
+      }
+      return jsonResponse(result.invite, 201);
     }
 
     // ===== PICKUP SLOTS (public) =====

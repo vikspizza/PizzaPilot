@@ -5,8 +5,10 @@ import { insertPizzaSchema, insertOrderSchema, insertReviewSchema, insertSetting
 import { createOrderFromRequest } from "./order-create";
 import { z } from "zod";
 import { sendSms } from "./sms";
-import { getTryPieContext } from "./try-pie-context";
+import { getTryPieContext, getTryPieContextForBatch } from "./try-pie-context";
 import { createTryPieHold, releaseTryPieHold } from "./try-pie-hold";
+import { createTryPieInviteForBatch, validateUnusedTryPieInvite } from "./try-pie-invite";
+import { normalizeInviteCode } from "./try-pie-invite-storage";
 import { normalizePickupTime } from "@shared/pickup-time";
 import {
   createAdminToken,
@@ -650,17 +652,59 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.post("/api/try-pie/invite/redeem", async (req, res) => {
+    try {
+      const code = normalizeInviteCode(String(req.body?.code ?? ""));
+      if (!code) {
+        return res.status(400).json({ error: "Enter a valid invite code." });
+      }
+
+      const invite = await storage.getTryPieInviteByCode(code);
+      if (!invite) {
+        return res.status(404).json({ error: "That invite code is not valid." });
+      }
+
+      const inviteResult = await validateUnusedTryPieInvite(storage, code, invite.batchId);
+      if (!inviteResult.ok) {
+        return res.status(inviteResult.status).json({ error: inviteResult.error });
+      }
+
+      const context = await getTryPieContextForBatch(storage, invite.batchId);
+      if (!context || !context.available) {
+        return res.status(400).json({
+          error: "This batch is not ready for ordering yet. Please check back later.",
+        });
+      }
+
+      res.json({ ...context, inviteCode: code });
+    } catch (error) {
+      console.error("Error redeeming try-pie invite:", error);
+      res.status(500).json({ error: "Failed to redeem invite code" });
+    }
+  });
+
   app.post("/api/try-pie/hold", async (req, res) => {
     try {
       const batchId = String(req.body?.batchId ?? "");
       const pizzaId = String(req.body?.pizzaId ?? "");
       const date = String(req.body?.date ?? "");
       const slotId = String(req.body?.slotId ?? "");
+      const inviteCode = req.body?.inviteCode
+        ? normalizeInviteCode(String(req.body.inviteCode))
+        : undefined;
       if (!batchId || !pizzaId || !date || !slotId) {
         return res.status(400).json({ error: "batchId, pizzaId, date, and slotId are required" });
       }
 
-      const result = await createTryPieHold(storage, batchId, pizzaId, date, slotId);
+      const result = await createTryPieHold(
+        storage,
+        batchId,
+        pizzaId,
+        date,
+        slotId,
+        undefined,
+        inviteCode ? { inviteCode } : undefined,
+      );
       if (!result.ok) {
         return res.status(result.status).json({ error: result.error });
       }
@@ -683,6 +727,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error releasing try-pie hold:", error);
       res.status(500).json({ error: "Failed to release reservation" });
+    }
+  });
+
+  app.get("/api/batches/:id/invites", async (req, res) => {
+    try {
+      const batch = await storage.getBatchById(req.params.id);
+      if (!batch) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
+      const invites = await storage.getTryPieInvitesByBatchId(batch.id);
+      res.json(invites);
+    } catch (error) {
+      console.error("Error fetching try-pie invites:", error);
+      res.status(500).json({ error: "Failed to fetch invite codes" });
+    }
+  });
+
+  app.post("/api/batches/:id/invites", async (req, res) => {
+    try {
+      const result = await createTryPieInviteForBatch(storage, req.params.id);
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
+      }
+      res.status(201).json(result.invite);
+    } catch (error) {
+      console.error("Error creating try-pie invite:", error);
+      res.status(500).json({ error: "Failed to create invite code" });
     }
   });
 

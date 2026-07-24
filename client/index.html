@@ -20,6 +20,30 @@
     <div class="cta-stack">
       <div class="try-pie-block">
         <button type="button" class="try-pie-btn" id="try-pie-btn" disabled>Try a Pie</button>
+        <div class="try-pie-invite" id="try-pie-invite" hidden>
+          <button type="button" class="try-pie-invite-toggle" id="try-pie-invite-toggle">
+            Have an invite code?
+          </button>
+          <form class="try-pie-invite-form" id="try-pie-invite-form" hidden>
+            <label class="try-pie-invite-field">
+              <span class="sr-only">Invite code</span>
+              <input
+                id="try-pie-invite-code"
+                name="inviteCode"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                maxlength="32"
+                placeholder="Invite code"
+                required
+              />
+            </label>
+            <button type="submit" class="try-pie-invite-submit" id="try-pie-invite-submit">
+              Redeem
+            </button>
+          </form>
+          <p class="try-pie-invite-error" id="try-pie-invite-error" hidden></p>
+        </div>
         <p class="try-pie-status" id="try-pie-status" aria-live="polite"></p>
         <p class="try-pie-success" id="try-pie-success" hidden></p>
       </div>

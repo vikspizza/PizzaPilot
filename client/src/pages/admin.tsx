@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Pizza, type Order, type Batch, type BatchPizza, type SlotList, type PickupSlot } from "@/lib/api";
+import { api, type Pizza, type Order, type Batch, type BatchPizza, type SlotList, type PickupSlot, type TryPieInvite } from "@/lib/api";
 import { Layout } from "@/components/layout";
 import { LandingHomeLink } from "@/components/landing-home-link";
 import { Button } from "@/components/ui/button";
@@ -243,7 +243,7 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
   };
 
   const canCancel = (status: Order["status"]): boolean => {
-    return !["completed", "cancelled"].includes(status);
+    return !["ready", "delivered", "completed", "cancelled"].includes(status);
   };
 
   return (
@@ -750,7 +750,7 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
                       size="sm"
                       onClick={() => setSelectedBatch(selectedBatch?.id === batch.id ? null : batch)}
                     >
-                      {selectedBatch?.id === batch.id ? "Hide" : "View"} Pizzas
+                      {selectedBatch?.id === batch.id ? "Hide" : "Manage"}
                     </Button>
                     <Button
                       variant="outline"
@@ -775,7 +775,7 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
                 </div>
               </CardHeader>
               {selectedBatch?.id === batch.id && (
-                <CardContent>
+                <CardContent className="space-y-8">
                   <BatchPizzasList
                     batch={batch}
                     pizzas={pizzas}
@@ -801,6 +801,7 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
                       })
                     }
                   />
+                  <BatchInvitesList batch={batch} />
                 </CardContent>
               )}
             </Card>
@@ -1076,6 +1077,114 @@ function BatchPizzaRow({
         )}
       </TableCell>
     </TableRow>
+  );
+}
+
+function BatchInvitesList({ batch }: { batch: Batch }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  const { data: invites, isLoading } = useQuery({
+    queryKey: ["batch-invites", batch.id],
+    queryFn: () => api.getBatchInvites(batch.id),
+  });
+
+  const createInviteMutation = useMutation({
+    mutationFn: () => api.createBatchInvite(batch.id),
+    onSuccess: (invite) => {
+      queryClient.invalidateQueries({ queryKey: ["batch-invites", batch.id] });
+      toast({
+        title: "Invite created",
+        description: `Code ${invite.code} is ready to share.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not create invite",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const copyInvite = async (invite: TryPieInvite) => {
+    const link = `${origin}/?invite=${encodeURIComponent(invite.code)}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast({ title: "Invite link copied", description: link });
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: link,
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (isLoading) {
+    return <Loader2 className="animate-spin" />;
+  }
+
+  return (
+    <div className="space-y-3 border-t pt-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="font-semibold">Sold-out invite codes</h3>
+          <p className="text-sm text-muted-foreground">
+            One-time codes that unlock Try a Pie when this batch is sold out.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => createInviteMutation.mutate()}
+          disabled={createInviteMutation.isPending}
+        >
+          {createInviteMutation.isPending ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Plus className="w-4 h-4 mr-2" />
+          )}
+          Generate code
+        </Button>
+      </div>
+
+      {!invites?.length ? (
+        <p className="text-sm text-muted-foreground">No invite codes yet.</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Code</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Share</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {invites.map((invite) => (
+              <TableRow key={invite.id}>
+                <TableCell className="font-mono tracking-wider">{invite.code}</TableCell>
+                <TableCell>
+                  <Badge variant={invite.usedAt ? "secondary" : "default"}>
+                    {invite.usedAt ? "Used" : "Unused"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={Boolean(invite.usedAt)}
+                    onClick={() => void copyInvite(invite)}
+                  >
+                    Copy link
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
   );
 }
 

@@ -27,6 +27,7 @@ import type {
   InsertSlotList,
   PickupSlot,
   InsertPickupSlot,
+  TryPieInvite,
 } from "@shared/schema";
 import {
   getCustomerById as fetchCustomerById,
@@ -39,6 +40,14 @@ import {
   hasExistingBatchOrder as fetchHasExistingBatchOrder,
   upsertCustomer as upsertCustomerRecord,
 } from "./order-storage";
+import {
+  claimTryPieInvite as claimTryPieInviteRecord,
+  generateInviteCode,
+  insertTryPieInvite,
+  selectTryPieInviteByCode,
+  selectTryPieInvitesByBatchId,
+  unclaimTryPieInvite as unclaimTryPieInviteRecord,
+} from "./try-pie-invite-storage";
 
 // Re-implement DatabaseStorage using Cloudflare-compatible db
 // This is identical to storage.ts but uses db-cf instead of db
@@ -483,6 +492,26 @@ class DatabaseStorage {
 
   async deletePickupSlot(slotId: string): Promise<void> {
     await this.db.delete(schema.pickupSlots).where(eq(schema.pickupSlots.slotId, slotId));
+  }
+
+  async createTryPieInvite(batchId: string, code?: string): Promise<TryPieInvite> {
+    return insertTryPieInvite(this.db, batchId, code ?? generateInviteCode());
+  }
+
+  async getTryPieInvitesByBatchId(batchId: string): Promise<TryPieInvite[]> {
+    return selectTryPieInvitesByBatchId(this.db, batchId);
+  }
+
+  async getTryPieInviteByCode(code: string): Promise<TryPieInvite | undefined> {
+    return selectTryPieInviteByCode(this.db, code);
+  }
+
+  async claimTryPieInvite(code: string, batchId: string): Promise<TryPieInvite | undefined> {
+    return claimTryPieInviteRecord(this.db, code, batchId);
+  }
+
+  async unclaimTryPieInvite(code: string): Promise<void> {
+    await unclaimTryPieInviteRecord(this.db, code);
   }
 }
 

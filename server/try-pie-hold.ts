@@ -5,6 +5,7 @@ import {
   type HoldStore,
 } from "./try-pie-hold-store";
 import { isSlotHoldActive } from "./try-pie-hold-cache";
+import { validateUnusedTryPieInvite } from "./try-pie-invite";
 
 export type CreateTryPieHoldResult =
   | { ok: true; holdId: string; expiresAt: string; expiresInSeconds: number }
@@ -21,6 +22,7 @@ export async function createTryPieHold(
   date: string,
   slotId: string,
   holdStore?: HoldStore,
+  options?: { inviteCode?: string },
 ): Promise<CreateTryPieHoldResult> {
   const store = storeOrDefault(holdStore);
 
@@ -45,13 +47,28 @@ export async function createTryPieHold(
     };
   }
 
-  const available = await storage.getAvailableQuantity(batchId, pizzaId);
-  if (available < 1) {
-    return {
-      ok: false,
-      status: 409,
-      error: "Sorry, this pie just sold out. Please try again later.",
-    };
+  let bypassSoldOut = false;
+  if (options?.inviteCode) {
+    const inviteResult = await validateUnusedTryPieInvite(
+      storage,
+      options.inviteCode,
+      batchId,
+    );
+    if (!inviteResult.ok) {
+      return inviteResult;
+    }
+    bypassSoldOut = true;
+  }
+
+  if (!bypassSoldOut) {
+    const available = await storage.getAvailableQuantity(batchId, pizzaId);
+    if (available < 1) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Sorry, this pie just sold out. Please try again later.",
+      };
+    }
   }
 
   const created = await store.create({

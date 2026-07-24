@@ -25,6 +25,7 @@ import type {
   InsertSlotList,
   PickupSlot,
   InsertPickupSlot,
+  TryPieInvite,
 } from "@shared/schema";
 import {
   getCustomerById as fetchCustomerById,
@@ -38,6 +39,14 @@ import {
   hasExistingBatchOrder as fetchHasExistingBatchOrder,
   upsertCustomer as upsertCustomerRecord,
 } from "./order-storage";
+import {
+  claimTryPieInvite as claimTryPieInviteRecord,
+  generateInviteCode,
+  insertTryPieInvite,
+  selectTryPieInviteByCode,
+  selectTryPieInvitesByBatchId,
+  unclaimTryPieInvite as unclaimTryPieInviteRecord,
+} from "./try-pie-invite-storage";
 
 export interface IStorage {
   // Users
@@ -120,6 +129,13 @@ export interface IStorage {
 
   // Past experiments: distinct pizzas ever offered, with count of batches each appeared in
   getPastExperiments(): Promise<Array<Pizza & { offerCount: number }>>;
+
+  // Try a Pie invite codes
+  createTryPieInvite(batchId: string, code?: string): Promise<TryPieInvite>;
+  getTryPieInvitesByBatchId(batchId: string): Promise<TryPieInvite[]>;
+  getTryPieInviteByCode(code: string): Promise<TryPieInvite | undefined>;
+  claimTryPieInvite(code: string, batchId: string): Promise<TryPieInvite | undefined>;
+  unclaimTryPieInvite(code: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -554,6 +570,26 @@ export class DatabaseStorage implements IStorage {
 
   async deletePickupSlot(slotId: string): Promise<void> {
     await db.delete(schema.pickupSlots).where(eq(schema.pickupSlots.slotId, slotId));
+  }
+
+  async createTryPieInvite(batchId: string, code?: string): Promise<TryPieInvite> {
+    return insertTryPieInvite(db, batchId, code ?? generateInviteCode());
+  }
+
+  async getTryPieInvitesByBatchId(batchId: string): Promise<TryPieInvite[]> {
+    return selectTryPieInvitesByBatchId(db, batchId);
+  }
+
+  async getTryPieInviteByCode(code: string): Promise<TryPieInvite | undefined> {
+    return selectTryPieInviteByCode(db, code);
+  }
+
+  async claimTryPieInvite(code: string, batchId: string): Promise<TryPieInvite | undefined> {
+    return claimTryPieInviteRecord(db, code, batchId);
+  }
+
+  async unclaimTryPieInvite(code: string): Promise<void> {
+    await unclaimTryPieInviteRecord(db, code);
   }
 }
 

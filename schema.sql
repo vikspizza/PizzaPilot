@@ -172,6 +172,21 @@ ALTER TABLE "orders" ADD CONSTRAINT "orders_slot_id_pickup_slots_slot_id_fk"
 	FOREIGN KEY ("slot_id") REFERENCES "pickup_slots"("slot_id") ON DELETE no action ON UPDATE no action;
 
 CREATE INDEX IF NOT EXISTS "idx_batches_slot_list_id" ON "batches"("slot_list_id");
+
+-- One-time Try a Pie invite codes (sold-out bypass, batch-scoped)
+CREATE TABLE IF NOT EXISTS "try_pie_invites" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"code" text NOT NULL,
+	"batch_id" varchar NOT NULL,
+	"used_at" timestamp,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "try_pie_invites_code_unique" UNIQUE("code")
+);
+
+ALTER TABLE "try_pie_invites" ADD CONSTRAINT "try_pie_invites_batch_id_batches_id_fk"
+	FOREIGN KEY ("batch_id") REFERENCES "batches"("id") ON DELETE cascade ON UPDATE no action;
+
+CREATE INDEX IF NOT EXISTS "idx_try_pie_invites_batch_id" ON "try_pie_invites"("batch_id");
 CREATE INDEX IF NOT EXISTS "idx_pickup_slots_slot_list_id" ON "pickup_slots"("slot_list_id");
 CREATE INDEX IF NOT EXISTS "idx_pickup_slots_pickup_time" ON "pickup_slots"("pickup_time");
 CREATE INDEX IF NOT EXISTS "idx_slot_lists_active_yorn" ON "slot_lists"("active_yorn");

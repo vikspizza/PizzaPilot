@@ -345,6 +345,106 @@ body.landing-home {
   filter: grayscale(0.35);
 }
 
+.try-pie-invite {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+}
+
+.try-pie-invite-toggle {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgba(255, 214, 140, 0.92);
+  font: inherit;
+  font-size: 0.92rem;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+}
+
+.try-pie-invite-toggle:hover {
+  color: #ffe2a8;
+}
+
+.try-pie-invite-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem;
+  width: min(100%, 18rem);
+}
+
+.try-pie-invite-form[hidden] {
+  display: none;
+}
+
+.try-pie-invite-field {
+  flex: 1 1 8rem;
+  margin: 0;
+}
+
+.try-pie-invite-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(255, 193, 61, 0.35);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff8ea;
+  font: inherit;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.try-pie-invite-field input:focus {
+  outline: 2px solid rgba(255, 193, 61, 0.55);
+  outline-offset: 1px;
+}
+
+.try-pie-invite-submit {
+  padding: 0.55rem 0.9rem;
+  border: 1px solid rgba(255, 193, 61, 0.45);
+  border-radius: 0.5rem;
+  background: rgba(255, 176, 0, 0.18);
+  color: #ffe9b5;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.try-pie-invite-submit:hover:not(:disabled) {
+  background: rgba(255, 176, 0, 0.28);
+}
+
+.try-pie-invite-submit:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.try-pie-invite-error {
+  margin: 0;
+  color: #ffb4a8;
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .try-pie-status {
   margin: 0;
   font-size: 0.85rem;

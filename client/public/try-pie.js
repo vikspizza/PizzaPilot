@@ -1,6 +1,8 @@
 (function () {
-  /** @type {{ available: false, soldOut?: boolean } | { available: true, batch: { id: string }, pizzaId: string, date: string, slots: Array<{ slotId: string, pickupTime: string }>, bookedSlotIds: string[] } | null} */
+  /** @type {{ available: false, soldOut?: boolean, batch?: { id: string } } | { available: true, batch: { id: string }, pizzaId: string, date: string, slots: Array<{ slotId: string, pickupTime: string }>, bookedSlotIds: string[], inviteCode?: string } | null} */
   let context = null;
+  /** @type {string | null} */
+  let inviteCode = null;
   /** @type {string | null} */
   let holdId = null;
   /** @type {string | null} */
@@ -32,6 +34,12 @@
   const upcomingBatchEl = document.getElementById("upcoming-batch");
   const upcomingBatchHeadingEl = document.getElementById("upcoming-batch-heading");
   const upcomingBatchPizzasEl = document.getElementById("upcoming-batch-pizzas");
+  const inviteBlock = document.getElementById("try-pie-invite");
+  const inviteToggle = document.getElementById("try-pie-invite-toggle");
+  const inviteForm = document.getElementById("try-pie-invite-form");
+  const inviteCodeInput = document.getElementById("try-pie-invite-code");
+  const inviteSubmit = document.getElementById("try-pie-invite-submit");
+  const inviteErrorEl = document.getElementById("try-pie-invite-error");
 
   if (
     !btn ||
@@ -49,7 +57,13 @@
     !timerEl ||
     !upcomingBatchEl ||
     !upcomingBatchHeadingEl ||
-    !upcomingBatchPizzasEl
+    !upcomingBatchPizzasEl ||
+    !inviteBlock ||
+    !inviteToggle ||
+    !inviteForm ||
+    !inviteCodeInput ||
+    !inviteSubmit ||
+    !inviteErrorEl
   ) {
     return;
   }
@@ -296,6 +310,10 @@
   }
 
   async function loadContext() {
+    if (inviteCode) {
+      return redeemInvite(inviteCode, { silent: true });
+    }
+
     try {
       const res = await fetch("/api/try-pie/context");
       if (!res.ok) {
@@ -303,30 +321,100 @@
       }
       context = await res.json();
       renderUpcomingBatch(context);
+      setInviteError("");
 
       if (!context || !context.available) {
+        const isSoldOut = Boolean(context?.soldOut);
         /** @type {HTMLButtonElement} */ (btn).disabled = true;
         /** @type {HTMLButtonElement} */ (btn).classList.add("try-pie-btn-sold-out");
+        /** @type {HTMLButtonElement} */ (btn).textContent = isSoldOut ? "Sold Out" : "Try a Pie";
+        inviteBlock.hidden = !isSoldOut;
+        if (!isSoldOut) {
+          inviteForm.hidden = true;
+        }
         setStatus(
-          context?.soldOut
-            ? "SOLD OUT."
+          isSoldOut
+            ? ""
             : "Pizza is available Friday or Saturday evenings. Signup usually opens up 24 hours in advance. Please check back here. Many thanks for your support. 🙏",
         );
         return false;
       }
 
+      inviteBlock.hidden = true;
+      inviteForm.hidden = true;
       /** @type {HTMLButtonElement} */ (btn).disabled = false;
       /** @type {HTMLButtonElement} */ (btn).classList.remove("try-pie-btn-sold-out");
+      /** @type {HTMLButtonElement} */ (btn).textContent = "Try a Pie";
       setStatus("");
       populateSlots(context.slots, context.bookedSlotIds);
       return true;
     } catch {
       /** @type {HTMLButtonElement} */ (btn).disabled = true;
+      inviteBlock.hidden = true;
       upcomingBatchEl.hidden = true;
       upcomingBatchPizzasEl.innerHTML = "";
       setStatus("Unable to check availability. Please try again later.");
       return false;
     }
+  }
+
+  /**
+   * @param {string} code
+   * @param {{ silent?: boolean }} [options]
+   */
+  async function redeemInvite(code, options = {}) {
+    const normalized = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (normalized.length < 4) {
+      if (!options.silent) {
+        setInviteError("Enter a valid invite code.");
+      }
+      return false;
+    }
+
+    try {
+      const res = await fetch("/api/try-pie/invite/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: normalized }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (!options.silent) {
+          setInviteError(
+            typeof data.error === "string" ? data.error : "Could not redeem that invite code.",
+          );
+        }
+        return false;
+      }
+
+      inviteCode = typeof data.inviteCode === "string" ? data.inviteCode : normalized;
+      context = data;
+      renderUpcomingBatch(context);
+      setInviteError("");
+      inviteBlock.hidden = true;
+      inviteForm.hidden = true;
+      /** @type {HTMLButtonElement} */ (btn).disabled = false;
+      /** @type {HTMLButtonElement} */ (btn).classList.remove("try-pie-btn-sold-out");
+      /** @type {HTMLButtonElement} */ (btn).textContent = "Try a Pie";
+      setStatus("Invite accepted — pick a pickup time.");
+      populateSlots(context.slots, context.bookedSlotIds);
+      return true;
+    } catch {
+      if (!options.silent) {
+        setInviteError("Could not redeem that invite code. Please try again.");
+      }
+      return false;
+    }
+  }
+
+  function setInviteError(message) {
+    if (!message) {
+      inviteErrorEl.hidden = true;
+      inviteErrorEl.textContent = "";
+      return;
+    }
+    inviteErrorEl.hidden = false;
+    inviteErrorEl.textContent = message;
   }
 
   async function reserveSlot(slotId) {
@@ -342,6 +430,7 @@
         pizzaId: context.pizzaId,
         date: context.date,
         slotId,
+        ...(inviteCode ? { inviteCode } : {}),
       }),
     });
 
@@ -492,6 +581,7 @@
       customerEmail: /** @type {HTMLInputElement} */ (emailInput).value.trim(),
       customerPhone: normalizePhone(/** @type {HTMLInputElement} */ (phoneInput).value),
       holdId,
+      ...(inviteCode ? { inviteCode } : {}),
     };
 
     /** @type {HTMLButtonElement} */ (submitBtn).disabled = true;
@@ -518,6 +608,7 @@
       clearHoldTimer();
       holdId = null;
       heldSlotId = null;
+      inviteCode = null;
       modal.hidden = true;
       document.body.classList.remove("try-pie-modal-open");
       resetHoldState();
@@ -527,6 +618,8 @@
         "Order received! We'll email confirmation with pickup details.";
       /** @type {HTMLButtonElement} */ (btn).textContent = "Order placed";
       /** @type {HTMLButtonElement} */ (btn).disabled = true;
+      inviteBlock.hidden = true;
+      setStatus("");
     } catch (error) {
       setError(error instanceof Error ? error.message : "Something went wrong.");
       /** @type {HTMLButtonElement} */ (submitBtn).disabled = false;
@@ -536,5 +629,47 @@
     }
   });
 
-  loadContext();
+  inviteToggle.addEventListener("click", () => {
+    inviteForm.hidden = !inviteForm.hidden;
+    if (!inviteForm.hidden) {
+      /** @type {HTMLInputElement} */ (inviteCodeInput).focus();
+    }
+  });
+
+  inviteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setInviteError("");
+    /** @type {HTMLButtonElement} */ (inviteSubmit).disabled = true;
+    try {
+      const redeemed = await redeemInvite(
+        /** @type {HTMLInputElement} */ (inviteCodeInput).value,
+      );
+      if (redeemed) {
+        successEl.hidden = true;
+        clearHoldTimer();
+        await releaseHold();
+        resetHoldState();
+        openModal();
+      }
+    } finally {
+      /** @type {HTMLButtonElement} */ (inviteSubmit).disabled = false;
+    }
+  });
+
+  loadContext().then(async (ready) => {
+    const params = new URLSearchParams(window.location.search);
+    const codeFromUrl = params.get("invite") || params.get("code");
+    if (!codeFromUrl) {
+      return;
+    }
+    /** @type {HTMLInputElement} */ (inviteCodeInput).value = codeFromUrl;
+    inviteBlock.hidden = false;
+    inviteForm.hidden = false;
+    if (!ready) {
+      const redeemed = await redeemInvite(codeFromUrl);
+      if (redeemed) {
+        openModal();
+      }
+    }
+  });
 })();

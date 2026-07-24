@@ -92,6 +92,7 @@ export const createOrderRequestSchema = z.object({
     .transform((value) => value.replace(/\D/g, ""))
     .pipe(z.string().regex(/^\d{10}$/, "Phone must be 10 digits")),
   holdId: z.string().uuid().optional(),
+  inviteCode: z.string().min(4).max(32).optional(),
 });
 
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
@@ -202,6 +203,24 @@ export const insertBatchPizzaSchema = createInsertSchema(batchPizzas).omit({
 
 export type InsertBatchPizza = z.infer<typeof insertBatchPizzaSchema>;
 export type BatchPizza = typeof batchPizzas.$inferSelect;
+
+// One-time Try a Pie invite codes (batch-scoped; allow ordering when sold out)
+export const tryPieInvites = pgTable("try_pie_invites", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  batchId: varchar("batch_id").references(() => batches.id, { onDelete: "cascade" }).notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTryPieInviteSchema = createInsertSchema(tryPieInvites).omit({
+  id: true,
+  createdAt: true,
+  usedAt: true,
+});
+
+export type InsertTryPieInvite = z.infer<typeof insertTryPieInviteSchema>;
+export type TryPieInvite = typeof tryPieInvites.$inferSelect;
 
 // Pickup slot lists and bookable time slots
 export const slotLists = pgTable("slot_lists", {
