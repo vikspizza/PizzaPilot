@@ -1,5 +1,6 @@
 import type { OrderWithCustomer, Pizza } from "@shared/schema";
 import { formatPickupTime } from "@shared/pickup-time";
+import { buildReviewLinkUrl } from "@shared/review-link";
 
 const LOGO_FILENAME = "viks-pizza-logo2.png";
 const LOGO_CONTENT_ID = "viks-logo";
@@ -11,6 +12,8 @@ export type OrderEmailConfig = {
   siteUrl: string;
   /** Origin that serves static assets (e.g. pages.dev). Defaults to siteUrl. */
   logoBaseUrl?: string;
+  /** HMAC secret for personalized review links. */
+  reviewLinkSecret?: string;
 };
 
 type ResendAttachment = {
@@ -118,11 +121,24 @@ function buildOrderConfirmationHtml(
   pizza: Pizza,
   logoSrc: string,
   pizzaImageSrc: string | null,
+  reviewUrl: string | null,
 ): string {
   const pickupTime = formatPickupTime(order.pickupSlot.pickupTime);
   const serviceDate = formatServiceDate(order.date);
   const pizzaImageMarkup = pizzaImageSrc
     ? `<img src="${pizzaImageSrc}" alt="${pizza.name}" width="280" style="display:block;width:100%;max-width:280px;height:auto;margin:0 auto 14px;border-radius:10px;" />`
+    : "";
+  const reviewMarkup = reviewUrl
+    ? `<tr>
+            <td style="padding:0 24px 24px;text-align:center;">
+              <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:rgba(255,255,255,0.82);">
+                After you try it, we'd love your honest feedback. This link is just for your order and stops working once you submit.
+              </p>
+              <a href="${reviewUrl}" style="display:inline-block;padding:12px 22px;border-radius:999px;background:#ffb000;color:#111111;font-size:14px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;text-decoration:none;">
+                Leave a review
+              </a>
+            </td>
+          </tr>`
     : "";
 
   return `<!DOCTYPE html>
@@ -168,6 +184,7 @@ function buildOrderConfirmationHtml(
               </table>
             </td>
           </tr>
+          ${reviewMarkup}
           <tr>
             <td style="padding:0 24px 28px;text-align:center;">
               <p style="margin:0;font-size:14px;line-height:1.6;color:rgba(255,255,255,0.65);">
@@ -201,7 +218,18 @@ export async function sendOrderConfirmationEmail(
   const pizzaImageSrc = pizzaImage?.src ?? resolveAssetUrl(logoBaseUrl, pizza.imageUrl);
 
   const subject = `Your Vik's Pizza order is confirmed`;
-  const html = buildOrderConfirmationHtml(order, pizza, logoSrc, pizzaImageSrc);
+  let reviewUrl: string | null = null;
+  if (config.reviewLinkSecret) {
+    try {
+      reviewUrl = await buildReviewLinkUrl(config.siteUrl, order.id, config.reviewLinkSecret);
+    } catch (error) {
+      console.error("[EMAIL] Failed to build review link:", error);
+    }
+  } else {
+    console.warn("[EMAIL] No review link secret configured — confirmation sent without review CTA");
+  }
+
+  const html = buildOrderConfirmationHtml(order, pizza, logoSrc, pizzaImageSrc, reviewUrl);
   const from = config.emailFrom || "Vik's Pizza <onboarding@resend.dev>";
   const attachments = [logoAttachment, pizzaImage?.attachment].filter(
     (attachment): attachment is ResendAttachment => Boolean(attachment),

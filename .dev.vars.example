@@ -16,3 +16,6 @@ RESEND_API_KEY=
 EMAIL_FROM=Vik's Pizza <onboarding@resend.dev>
 SITE_URL=https://your-site.pages.dev
 
+# Optional: dedicated secret for review email links (falls back to ADMIN_PASSWORD)
+# REVIEW_LINK_SECRET=change-me-review-links
+

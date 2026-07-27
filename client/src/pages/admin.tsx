@@ -55,7 +55,7 @@ export default function Admin() {
 
   if (!isAuthenticated) {
     return (
-      <Layout basicLogo>
+      <Layout minimal basicLogo>
         <div className="flex items-center justify-center min-h-[60vh]">
           <Card className="w-full max-w-md">
             <CardHeader>
@@ -247,7 +247,7 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
   };
 
   return (
-    <Layout basicLogo>
+    <Layout minimal basicLogo>
       <div className="space-y-8">
         <div className="flex justify-between items-center gap-4 flex-wrap">
           <h1 className="text-3xl font-display font-bold">Kitchen Dashboard</h1>

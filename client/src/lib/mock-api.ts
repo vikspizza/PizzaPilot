@@ -36,12 +36,17 @@ export interface Order {
 }
 
 export interface Review {
-  id: string;
   orderId: string;
   pizzaId: string;
+  author: string;
   rating: number;
   comment: string;
-  author: string;
+  answers?: Array<{
+    questionId: string;
+    questionKey: string;
+    prompt: string;
+    value: string;
+  }>;
   createdAt: string;
 }
 

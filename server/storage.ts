@@ -12,7 +12,8 @@ import type {
   Customer,
   InsertCustomer,
   Review,
-  InsertReview,
+  ReviewQuestion,
+  SubmitReviewRequest,
   Settings,
   InsertSettings,
   OtpCode,
@@ -47,6 +48,14 @@ import {
   selectTryPieInvitesByBatchId,
   unclaimTryPieInvite as unclaimTryPieInviteRecord,
 } from "./try-pie-invite-storage";
+import {
+  insertReviewAnswers,
+  selectActiveReviewQuestions,
+  selectReviewByOrderId,
+  selectReviewedOrderIds,
+  selectReviews,
+  selectReviewsByPizzaId,
+} from "./review-storage";
 
 export interface IStorage {
   // Users
@@ -83,11 +92,12 @@ export interface IStorage {
   updateOrderStatus(id: string, status: string): Promise<OrderWithCustomer | undefined>;
 
   // Reviews
+  getReviewQuestions(): Promise<ReviewQuestion[]>;
   getReviews(): Promise<Review[]>;
   getReviewsByPizzaId(pizzaId: string): Promise<Review[]>;
   getReviewByOrderId(orderId: string): Promise<Review | undefined>;
   getPendingReviewsByCustomerPhone(phone: string): Promise<OrderWithCustomer[]>;
-  createReview(review: InsertReview): Promise<Review>;
+  createReview(review: SubmitReviewRequest): Promise<Review>;
 
   // Settings
   getSettings(): Promise<Settings>;
@@ -279,17 +289,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Reviews
+  async getReviewQuestions(): Promise<ReviewQuestion[]> {
+    return selectActiveReviewQuestions(db);
+  }
+
   async getReviews(): Promise<Review[]> {
-    return db.select().from(schema.reviews);
+    return selectReviews(db);
   }
 
   async getReviewsByPizzaId(pizzaId: string): Promise<Review[]> {
-    return db.select().from(schema.reviews).where(eq(schema.reviews.pizzaId, pizzaId));
+    return selectReviewsByPizzaId(db, pizzaId);
   }
 
   async getReviewByOrderId(orderId: string): Promise<Review | undefined> {
-    const [review] = await db.select().from(schema.reviews).where(eq(schema.reviews.orderId, orderId));
-    return review;
+    return selectReviewByOrderId(db, orderId);
   }
 
   async getPendingReviewsByCustomerPhone(phone: string): Promise<OrderWithCustomer[]> {
@@ -305,17 +318,15 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    const allReviews = await db.select().from(schema.reviews);
-    const reviewedOrderIds = new Set(allReviews.map((r) => r.orderId));
+    const reviewedOrderIds = await selectReviewedOrderIds(db);
 
     return completedOrders
       .map(({ order, customer, pickupSlot }) => mapOrderWithCustomer(order, customer, pickupSlot))
       .filter((order) => !reviewedOrderIds.has(order.id));
   }
 
-  async createReview(review: InsertReview): Promise<Review> {
-    const [newReview] = await db.insert(schema.reviews).values(review).returning();
-    return newReview;
+  async createReview(review: SubmitReviewRequest): Promise<Review> {
+    return insertReviewAnswers(db, review);
   }
 
   // Settings

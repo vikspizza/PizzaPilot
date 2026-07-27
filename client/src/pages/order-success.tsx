@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 
 export default function OrderSuccess() {
   return (
-    <Layout>
+    <Layout minimal>
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center max-w-lg mx-auto">
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}

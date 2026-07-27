@@ -127,7 +127,7 @@ export default function Login() {
   };
 
   return (
-    <Layout basicLogo>
+    <Layout minimal basicLogo>
       <div className="flex items-center justify-center min-h-[60vh] py-12">
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1 text-center">

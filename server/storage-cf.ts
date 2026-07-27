@@ -14,7 +14,8 @@ import type {
   Customer,
   InsertCustomer,
   Review,
-  InsertReview,
+  ReviewQuestion,
+  SubmitReviewRequest,
   Settings,
   InsertSettings,
   OtpCode,
@@ -48,6 +49,14 @@ import {
   selectTryPieInvitesByBatchId,
   unclaimTryPieInvite as unclaimTryPieInviteRecord,
 } from "./try-pie-invite-storage";
+import {
+  insertReviewAnswers,
+  selectActiveReviewQuestions,
+  selectReviewByOrderId,
+  selectReviewedOrderIds,
+  selectReviews,
+  selectReviewsByPizzaId,
+} from "./review-storage";
 
 // Re-implement DatabaseStorage using Cloudflare-compatible db
 // This is identical to storage.ts but uses db-cf instead of db
@@ -191,31 +200,26 @@ class DatabaseStorage {
   }
 
   // Reviews
+  async getReviewQuestions(): Promise<ReviewQuestion[]> {
+    return selectActiveReviewQuestions(this.db);
+  }
+
   async getReviews(): Promise<Review[]> {
-    return this.db.select().from(schema.reviews).orderBy(schema.reviews.createdAt);
+    return selectReviews(this.db);
   }
 
   async getReviewsByPizzaId(pizzaId: string): Promise<Review[]> {
-    return this.db
-      .select()
-      .from(schema.reviews)
-      .where(eq(schema.reviews.pizzaId, pizzaId))
-      .orderBy(schema.reviews.createdAt);
+    return selectReviewsByPizzaId(this.db, pizzaId);
   }
 
   async getReviewByOrderId(orderId: string): Promise<Review | undefined> {
-    const [review] = await this.db
-      .select()
-      .from(schema.reviews)
-      .where(eq(schema.reviews.orderId, orderId));
-    return review;
+    return selectReviewByOrderId(this.db, orderId);
   }
 
   async getPendingReviewsByCustomerPhone(phone: string): Promise<OrderWithCustomer[]> {
     const orders = await this.getOrdersByCustomerPhone(phone);
-    const reviews = await this.db.select().from(schema.reviews);
+    const reviewedOrderIds = await selectReviewedOrderIds(this.db);
 
-    const reviewedOrderIds = new Set(reviews.map((r) => r.orderId));
     return orders.filter(
       (order) =>
         (order.status === "delivered" || order.status === "completed") &&
@@ -223,9 +227,8 @@ class DatabaseStorage {
     );
   }
 
-  async createReview(review: InsertReview): Promise<Review> {
-    const [newReview] = await this.db.insert(schema.reviews).values(review).returning();
-    return newReview;
+  async createReview(review: SubmitReviewRequest): Promise<Review> {
+    return insertReviewAnswers(this.db, review);
   }
 
   // Settings

@@ -7,7 +7,7 @@ import { Home, RefreshCw, Search, Pizza, FileText } from "lucide-react";
 
 export default function NotFound() {
   return (
-    <Layout>
+    <Layout minimal>
       <div className="max-w-4xl mx-auto space-y-12 py-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

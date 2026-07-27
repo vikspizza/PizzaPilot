@@ -46,7 +46,7 @@ export default function Home() {
   };
 
   return (
-    <Layout>
+    <Layout minimal>
       {/* Hero Section */}
       <section className="relative mb-16 md:mb-24 pt-0">
         <div className="max-w-4xl mx-auto text-center space-y-6">

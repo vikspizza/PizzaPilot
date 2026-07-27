@@ -8,4 +8,5 @@ export const APP_ROUTE_DIRS = [
   "faqs",
   "success",
   "past-experiments",
+  "review",
 ] as const;

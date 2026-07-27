@@ -2,5 +2,6 @@
 /app        /admin/     301
 /app/       /admin/     301
 
-# Dynamic review URLs (no physical shell per order id)
-/review/*   /app.html   200
+# Review SPA shell for /review/:orderId (and /review/). Never target /app.html —
+# Wrangler pretty-URLs that to /app, which then redirects to /admin/.
+/review/*   /review/index.html   200

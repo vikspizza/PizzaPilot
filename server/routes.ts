@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPizzaSchema, insertOrderSchema, insertReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema, insertSlotListSchema, insertPickupSlotSchema, createOrderRequestSchema } from "@shared/schema";
+import { insertPizzaSchema, insertOrderSchema, submitReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema, insertSlotListSchema, insertPickupSlotSchema, createOrderRequestSchema } from "@shared/schema";
 import { createOrderFromRequest } from "./order-create";
 import { z } from "zod";
 import { sendSms } from "./sms";
@@ -9,6 +9,8 @@ import { getTryPieContext, getTryPieContextForBatch } from "./try-pie-context";
 import { createTryPieHold, releaseTryPieHold } from "./try-pie-hold";
 import { createTryPieInviteForBatch, validateUnusedTryPieInvite } from "./try-pie-invite";
 import { normalizeInviteCode } from "./try-pie-invite-storage";
+import { createReviewFromLink, getReviewLinkContext } from "./review-from-link";
+import { resolveReviewLinkSecret } from "@shared/review-link";
 import { normalizePickupTime } from "@shared/pickup-time";
 import {
   createAdminToken,
@@ -190,6 +192,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         emailFrom: process.env.EMAIL_FROM,
         siteUrl,
         logoBaseUrl: requestOrigin,
+        reviewLinkSecret: resolveReviewLinkSecret(
+          process.env.REVIEW_LINK_SECRET,
+          process.env.ADMIN_PASSWORD,
+        ),
       });
 
       if (!result.ok) {
@@ -275,6 +281,60 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ===== REVIEWS =====
+  app.get("/api/review-questions", async (_req, res) => {
+    try {
+      const questions = await storage.getReviewQuestions();
+      res.json(questions);
+    } catch (error) {
+      console.error("Error fetching review questions:", error);
+      res.status(500).json({ error: "Failed to fetch review questions" });
+    }
+  });
+
+  app.get("/api/reviews/link", async (req, res) => {
+    try {
+      const token = String(req.query.token ?? "");
+      if (!token) {
+        return res.status(400).json({ error: "token is required" });
+      }
+      const result = await getReviewLinkContext(storage, token, {
+        REVIEW_LINK_SECRET: process.env.REVIEW_LINK_SECRET,
+        ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
+      });
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
+      }
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error loading review link:", error);
+      res.status(500).json({ error: "Failed to load review" });
+    }
+  });
+
+  app.post("/api/reviews/link", async (req, res) => {
+    try {
+      const token = String(req.body?.token ?? "");
+      if (!token) {
+        return res.status(400).json({ error: "token is required" });
+      }
+      const { token: _token, ...reviewBody } = req.body ?? {};
+      const result = await createReviewFromLink(storage, token, reviewBody, {
+        REVIEW_LINK_SECRET: process.env.REVIEW_LINK_SECRET,
+        ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
+      });
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
+      }
+      res.status(201).json(result.data);
+    } catch (error) {
+      console.error("Error creating review from link:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create review" });
+    }
+  });
+
   app.get("/api/reviews", async (req, res) => {
     try {
       const { pizzaId, orderId } = req.query;
@@ -296,7 +356,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/reviews", async (req, res) => {
     try {
-      const review = insertReviewSchema.parse(req.body);
+      const review = submitReviewSchema.parse(req.body);
       
       // Check if review already exists for this order
       const existingReview = await storage.getReviewByOrderId(review.orderId);
@@ -320,7 +380,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
-      res.status(500).json({ error: "Failed to create review" });
+      const message = error instanceof Error ? error.message : "Failed to create review";
+      res.status(400).json({ error: message });
     }
   });
 

@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 
 export default function About() {
   return (
-    <Layout basicLogo>
+    <Layout minimal basicLogo>
       <div className="max-w-4xl mx-auto space-y-12 py-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

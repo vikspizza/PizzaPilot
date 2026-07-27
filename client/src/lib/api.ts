@@ -110,22 +110,44 @@ export interface PickupSlot {
   createdAt: string;
 }
 
-export interface Review {
+export interface ReviewQuestion {
   id: string;
-  orderId: string;
-  pizzaId: string;
-  rating: number; // Keep for backward compatibility
-  comment: string; // Keep for backward compatibility, now stores additionalThoughts
-  author: string;
-  overallRating?: string;
-  fairPrice?: string;
-  customPriceAmount?: string;
-  crustFlavor?: string;
-  crustQuality?: string;
-  toppingsBalance?: string;
-  wouldOrderAgain?: string;
+  key: string;
+  prompt: string;
+  helpText: string | null;
+  answerType: "choice" | "text" | "stars" | string;
+  options: string | null;
+  sortOrder: number;
+  required: boolean;
+  active: boolean;
   createdAt: string;
 }
+
+export interface Review {
+  orderId: string;
+  pizzaId: string;
+  author: string;
+  rating: number;
+  comment: string;
+  answers: Array<{
+    questionId: string;
+    questionKey: string;
+    prompt: string;
+    value: string;
+  }>;
+  createdAt: string;
+}
+
+export type SubmitReviewAnswer = {
+  questionId?: string;
+  questionKey?: string;
+  value: string;
+};
+
+export type SubmitReviewRequest = {
+  orderId: string;
+  answers: SubmitReviewAnswer[];
+};
 
 export interface Settings {
   id: number;
@@ -320,6 +342,12 @@ export const api = {
   },
 
   // Reviews
+  getReviewQuestions: async (): Promise<ReviewQuestion[]> => {
+    const res = await fetch("/api/review-questions");
+    if (!res.ok) throw new Error("Failed to fetch review questions");
+    return res.json();
+  },
+
   getReviews: async (pizzaId?: string): Promise<Review[]> => {
     const url = pizzaId ? `/api/reviews?pizzaId=${pizzaId}` : "/api/reviews";
     const res = await fetch(url);
@@ -340,7 +368,7 @@ export const api = {
     return res.json();
   },
 
-  addReview: async (review: Omit<Review, "id" | "createdAt">): Promise<Review> => {
+  addReview: async (review: SubmitReviewRequest): Promise<Review> => {
     const res = await fetch("/api/reviews", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -348,6 +376,38 @@ export const api = {
     });
     if (!res.ok) {
       const error = await res.json();
+      throw new Error(error.error || "Failed to add review");
+    }
+    return res.json();
+  },
+
+  getReviewByLink: async (
+    token: string,
+  ): Promise<{
+    order: Order;
+    pizza: Pizza;
+    alreadyReviewed: boolean;
+    questions: ReviewQuestion[];
+  }> => {
+    const res = await fetch(`/api/reviews/link?token=${encodeURIComponent(token)}`);
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || "Failed to load review link");
+    }
+    return res.json();
+  },
+
+  addReviewByLink: async (
+    token: string,
+    review: Omit<SubmitReviewRequest, "orderId"> & { orderId?: string },
+  ): Promise<Review> => {
+    const res = await fetch("/api/reviews/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...review, token }),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
       throw new Error(error.error || "Failed to add review");
     }
     return res.json();

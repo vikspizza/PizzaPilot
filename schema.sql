@@ -64,22 +64,28 @@ CREATE TABLE IF NOT EXISTS "orders" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 
--- Reviews table
-CREATE TABLE IF NOT EXISTS "reviews" (
+-- Review questions (configurable questionnaire)
+CREATE TABLE IF NOT EXISTS "review_questions" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"key" text NOT NULL UNIQUE,
+	"prompt" text NOT NULL,
+	"help_text" text,
+	"answer_type" text NOT NULL,
+	"options" text,
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"required" boolean DEFAULT true NOT NULL,
+	"active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+
+-- Review answers (one row per question per order)
+CREATE TABLE IF NOT EXISTS "review_answers" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"order_id" varchar NOT NULL,
-	"pizza_id" varchar NOT NULL,
-	"rating" integer NOT NULL,
-	"comment" text NOT NULL,
-	"author" text NOT NULL,
-	"overall_rating" text,
-	"fair_price" text,
-	"custom_price_amount" text,
-	"crust_flavor" text,
-	"crust_quality" text,
-	"toppings_balance" text,
-	"would_order_again" text,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"question_id" varchar NOT NULL,
+	"value" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "review_answers_order_question_unique" UNIQUE("order_id","question_id")
 );
 
 -- Settings table (singleton)
@@ -126,11 +132,11 @@ ALTER TABLE "orders" ADD CONSTRAINT "orders_batch_id_batches_id_fk"
 ALTER TABLE "orders" ADD CONSTRAINT "orders_pizza_id_pizzas_id_fk" 
 	FOREIGN KEY ("pizza_id") REFERENCES "pizzas"("id") ON DELETE no action ON UPDATE no action;
 
-ALTER TABLE "reviews" ADD CONSTRAINT "reviews_order_id_orders_id_fk" 
+ALTER TABLE "review_answers" ADD CONSTRAINT "review_answers_order_id_orders_id_fk"
 	FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE no action ON UPDATE no action;
 
-ALTER TABLE "reviews" ADD CONSTRAINT "reviews_pizza_id_pizzas_id_fk" 
-	FOREIGN KEY ("pizza_id") REFERENCES "pizzas"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "review_answers" ADD CONSTRAINT "review_answers_question_id_review_questions_id_fk"
+	FOREIGN KEY ("question_id") REFERENCES "review_questions"("id") ON DELETE no action ON UPDATE no action;
 
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS "idx_orders_customer_id" ON "orders"("customer_id");
@@ -139,8 +145,8 @@ CREATE INDEX IF NOT EXISTS "idx_orders_pizza_id" ON "orders"("pizza_id");
 CREATE INDEX IF NOT EXISTS "idx_orders_date" ON "orders"("date");
 CREATE INDEX IF NOT EXISTS "idx_orders_slot_id" ON "orders"("slot_id");
 CREATE INDEX IF NOT EXISTS "idx_orders_status" ON "orders"("status");
-CREATE INDEX IF NOT EXISTS "idx_reviews_order_id" ON "reviews"("order_id");
-CREATE INDEX IF NOT EXISTS "idx_reviews_pizza_id" ON "reviews"("pizza_id");
+CREATE INDEX IF NOT EXISTS "idx_review_answers_order_id" ON "review_answers"("order_id");
+CREATE INDEX IF NOT EXISTS "idx_review_answers_question_id" ON "review_answers"("question_id");
 CREATE INDEX IF NOT EXISTS "idx_batch_pizzas_batch_id" ON "batch_pizzas"("batch_id");
 CREATE INDEX IF NOT EXISTS "idx_batch_pizzas_pizza_id" ON "batch_pizzas"("pizza_id");
 CREATE INDEX IF NOT EXISTS "idx_otp_codes_phone" ON "otp_codes"("phone");
@@ -190,3 +196,16 @@ CREATE INDEX IF NOT EXISTS "idx_try_pie_invites_batch_id" ON "try_pie_invites"("
 CREATE INDEX IF NOT EXISTS "idx_pickup_slots_slot_list_id" ON "pickup_slots"("slot_list_id");
 CREATE INDEX IF NOT EXISTS "idx_pickup_slots_pickup_time" ON "pickup_slots"("pickup_time");
 CREATE INDEX IF NOT EXISTS "idx_slot_lists_active_yorn" ON "slot_lists"("active_yorn");
+
+-- Default review questionnaire
+INSERT INTO "review_questions" ("key", "prompt", "help_text", "answer_type", "options", "sort_order", "required", "active")
+VALUES
+	('star_rating', 'How would you rate this pizza?', 'Tap a star from 1 (poor) to 5 (excellent)', 'stars', NULL, 0, true, true),
+	('overall_rating', 'What did you think of this recipe overall?', NULL, 'choice', '["Needs improvement","Good","Awesome","Mind-blowing!"]', 1, true, true),
+	('crust_flavor', 'How was the crust flavor?', 'Flavor, depth, fermentation, savoriness', 'choice', '["Underdeveloped / bland","Good flavor","Very flavorful","Exceptional — delicious on its own"]', 2, true, true),
+	('crust_quality', 'How was the crust quality & texture?', 'Choose the closest match', 'choice', '["Too dense / underbaked","Too chewy","Good structure but could be lighter","Light, airy, and delicious","Perfect — crisp outside, airy inside"]', 3, true, true),
+	('toppings_balance', 'How well did the toppings work together?', NULL, 'choice', '["Not well / flavors clashed","Mostly good but something felt off","Well-balanced and tasty","Fantastic — perfectly harmonious"]', 4, true, true),
+	('would_order_again', 'Would you order this pizza again?', NULL, 'choice', '["No","Maybe","Yes","Definitely — put it on the permanent menu!"]', 5, true, true),
+	('fair_price', 'In your opinion, what is a fair price for this pizza?', 'What would you comfortably pay for it?', 'choice', '["$15–$17","$18–$20","$21–$23","$24–$26","Other"]', 6, true, true),
+	('additional_thoughts', 'Any additional thoughts, suggestions, or flavor notes?', 'Please share anything that would help us improve this recipe.', 'text', NULL, 7, false, true)
+ON CONFLICT ("key") DO NOTHING;

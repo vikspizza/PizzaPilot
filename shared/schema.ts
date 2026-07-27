@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, decimal, time } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, decimal, time, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -100,40 +100,97 @@ export type CreateOrderRequest = z.infer<typeof createOrderRequestSchema>;
 export type Order = typeof orders.$inferSelect;
 export type OrderWithCustomer = Order & { customer: Customer; pickupSlot: PickupSlot };
 
-// Reviews table
-export const reviews = pgTable("reviews", {
+// Review questions (configurable questionnaire)
+export const reviewQuestions = pgTable("review_questions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  orderId: varchar("order_id").references(() => orders.id).notNull(),
-  pizzaId: varchar("pizza_id").references(() => pizzas.id).notNull(),
-  rating: integer("rating").notNull(), // Keep for backward compatibility
-  comment: text("comment").notNull(), // Keep for backward compatibility, now stores additionalThoughts
-  author: text("author").notNull(),
-  // New questionnaire fields stored as JSON
-  overallRating: text("overall_rating"), // "Needs improvement" | "Good" | "Awesome" | "Mind-blowing!"
-  fairPrice: text("fair_price"), // "$15–$17" | "$18–$20" | "$21–$23" | "$24–$26" | "Other"
-  customPriceAmount: text("custom_price_amount"), // If fairPrice is "Other"
-  crustFlavor: text("crust_flavor"), // "Underdeveloped / bland" | "Good flavor" | "Very flavorful" | "Exceptional — delicious on its own"
-  crustQuality: text("crust_quality"), // "Too dense / underbaked" | "Too chewy" | "Good structure but could be lighter" | "Light, airy, and delicious" | "Perfect — crisp outside, airy inside"
-  toppingsBalance: text("toppings_balance"), // "Not well / flavors clashed" | "Mostly good but something felt off" | "Well-balanced and tasty" | "Fantastic — perfectly harmonious"
-  wouldOrderAgain: text("would_order_again"), // "No" | "Maybe" | "Yes" | "Definitely — put it on the permanent menu!"
+  key: text("key").notNull().unique(),
+  prompt: text("prompt").notNull(),
+  helpText: text("help_text"),
+  /** choice | text | stars */
+  answerType: text("answer_type").notNull(),
+  /** JSON string array of choice options; null for text/stars */
+  options: text("options"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  required: boolean("required").notNull().default(true),
+  active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertReviewSchema = createInsertSchema(reviews).omit({
+export const insertReviewQuestionSchema = createInsertSchema(reviewQuestions).omit({
   id: true,
   createdAt: true,
-}).extend({
-  overallRating: z.string().optional(),
-  fairPrice: z.string().optional(),
-  customPriceAmount: z.string().optional(),
-  crustFlavor: z.string().optional(),
-  crustQuality: z.string().optional(),
-  toppingsBalance: z.string().optional(),
-  wouldOrderAgain: z.string().optional(),
 });
 
-export type InsertReview = z.infer<typeof insertReviewSchema>;
-export type Review = typeof reviews.$inferSelect;
+export type InsertReviewQuestion = z.infer<typeof insertReviewQuestionSchema>;
+export type ReviewQuestion = typeof reviewQuestions.$inferSelect;
+
+// Review answers (one row per question per order)
+export const reviewAnswers = pgTable(
+  "review_answers",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    orderId: varchar("order_id")
+      .references(() => orders.id)
+      .notNull(),
+    questionId: varchar("question_id")
+      .references(() => reviewQuestions.id)
+      .notNull(),
+    value: text("value").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    orderQuestionUnique: unique("review_answers_order_question_unique").on(
+      table.orderId,
+      table.questionId,
+    ),
+  }),
+);
+
+export const insertReviewAnswerSchema = createInsertSchema(reviewAnswers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertReviewAnswer = z.infer<typeof insertReviewAnswerSchema>;
+export type ReviewAnswer = typeof reviewAnswers.$inferSelect;
+
+export const submitReviewAnswerSchema = z
+  .object({
+    questionId: z.string().optional(),
+    questionKey: z.string().optional(),
+    value: z.string().min(1, "Answer is required"),
+  })
+  .refine((a) => Boolean(a.questionId || a.questionKey), {
+    message: "questionId or questionKey is required",
+  });
+
+export const submitReviewSchema = z.object({
+  orderId: z.string().min(1),
+  answers: z.array(submitReviewAnswerSchema).min(1),
+});
+
+export type SubmitReviewAnswer = z.infer<typeof submitReviewAnswerSchema>;
+export type SubmitReviewRequest = z.infer<typeof submitReviewSchema>;
+
+/** Aggregated review for an order (resolved from answers + order/customer). */
+export type Review = {
+  orderId: string;
+  pizzaId: string;
+  author: string;
+  rating: number;
+  comment: string;
+  answers: Array<{
+    questionId: string;
+    questionKey: string;
+    prompt: string;
+    value: string;
+  }>;
+  createdAt: string;
+};
+
+/** @deprecated Use submitReviewSchema */
+export const insertReviewSchema = submitReviewSchema;
+export type InsertReview = SubmitReviewRequest;
 
 // Settings table (singleton)
 export const settings = pgTable("settings", {

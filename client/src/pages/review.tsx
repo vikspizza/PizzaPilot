@@ -1,10 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation, useRoute } from "wouter";
 import { Layout } from "@/components/layout";
-import { api, type Order, type Pizza } from "@/lib/api";
+import { api, type ReviewQuestion } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -14,121 +14,173 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatPickupTime } from "@/lib/pacific-time";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2, Star } from "lucide-react";
 import { motion } from "framer-motion";
 
-const reviewSchema = z.object({
-  overallRating: z.enum(["Needs improvement", "Good", "Awesome", "Mind-blowing!"]),
-  fairPrice: z.enum(["$15–$17", "$18–$20", "$21–$23", "$24–$26", "Other"]),
-  customPriceAmount: z.string().optional(),
-  crustFlavor: z.enum([
-    "Underdeveloped / bland",
-    "Good flavor",
-    "Very flavorful",
-    "Exceptional — delicious on its own",
-  ]),
-  crustQuality: z.enum([
-    "Too dense / underbaked",
-    "Too chewy",
-    "Good structure but could be lighter",
-    "Light, airy, and delicious",
-    "Perfect — crisp outside, airy inside",
-  ]),
-  toppingsBalance: z.enum([
-    "Not well / flavors clashed",
-    "Mostly good but something felt off",
-    "Well-balanced and tasty",
-    "Fantastic — perfectly harmonious",
-  ]),
-  wouldOrderAgain: z.enum(["No", "Maybe", "Yes", "Definitely — put it on the permanent menu!"]),
-  additionalThoughts: z.string().optional(),
-}).refine((data) => {
-  if (data.fairPrice === "Other") {
-    return data.customPriceAmount && data.customPriceAmount.trim().length > 0;
+function parseOptions(options: string | null): string[] {
+  if (!options) return [];
+  try {
+    const parsed = JSON.parse(options);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
   }
-  return true;
-}, {
-  message: "Please enter a custom price amount",
-  path: ["customPriceAmount"],
-});
+}
+
+function buildReviewSchema(questions: ReviewQuestion[]) {
+  const shape: Record<string, z.ZodTypeAny> = {
+    customPriceAmount: z.string().optional(),
+  };
+
+  for (const q of questions) {
+    if (q.answerType === "stars") {
+      shape[q.key] = z.coerce.number().int().min(1).max(5);
+    } else if (q.answerType === "choice") {
+      const options = parseOptions(q.options);
+      shape[q.key] = q.required
+        ? z.string().min(1, "Please select an option")
+        : z.string().optional();
+      if (options.length > 0 && q.required) {
+        shape[q.key] = z.enum(options as [string, ...string[]]);
+      }
+    } else {
+      shape[q.key] = q.required
+        ? z.string().min(1, "Please enter a response")
+        : z.string().optional();
+    }
+  }
+
+  return z.object(shape).superRefine((data, ctx) => {
+    const fairPrice = data.fair_price;
+    if (fairPrice === "Other") {
+      const custom = String(data.customPriceAmount ?? "").trim();
+      if (!custom) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Please enter a custom price amount",
+          path: ["customPriceAmount"],
+        });
+      }
+    }
+  });
+}
 
 export default function Review() {
   const [, params] = useRoute("/review/:orderId");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const orderId = params?.orderId;
+  const linkToken =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("t")
+      : null;
+  const isLinkMode = Boolean(linkToken);
+  const orderIdParam = params?.orderId;
 
-  const { data: order, isLoading: orderLoading } = useQuery({
-    queryKey: ["order", orderId],
-    queryFn: () => api.getOrderById(orderId!),
-    enabled: !!orderId,
+  const {
+    data: linkContext,
+    isLoading: linkLoading,
+    error: linkError,
+  } = useQuery({
+    queryKey: ["review-link", linkToken],
+    queryFn: () => api.getReviewByLink(linkToken!),
+    enabled: isLinkMode,
+    retry: false,
   });
 
-  const { data: pizza, isLoading: pizzaLoading } = useQuery({
-    queryKey: ["pizza", order?.pizzaId],
-    queryFn: () => api.getPizzaById(order!.pizzaId),
-    enabled: !!order?.pizzaId,
+  const { data: fetchedQuestions, isLoading: questionsLoading } = useQuery({
+    queryKey: ["review-questions"],
+    queryFn: () => api.getReviewQuestions(),
+    enabled: !isLinkMode,
+  });
+
+  const questions = isLinkMode ? linkContext?.questions ?? [] : fetchedQuestions ?? [];
+
+  const orderId = isLinkMode ? linkContext?.order.id : orderIdParam;
+
+  const { data: legacyOrder, isLoading: orderLoading } = useQuery({
+    queryKey: ["order", orderIdParam],
+    queryFn: () => api.getOrderById(orderIdParam!),
+    enabled: !isLinkMode && !!orderIdParam,
+  });
+
+  const { data: legacyPizza, isLoading: pizzaLoading } = useQuery({
+    queryKey: ["pizza", legacyOrder?.pizzaId],
+    queryFn: () => api.getPizzaById(legacyOrder!.pizzaId),
+    enabled: !isLinkMode && !!legacyOrder?.pizzaId,
   });
 
   const { data: existingReview } = useQuery({
-    queryKey: ["review", orderId],
-    queryFn: () => api.getReviewByOrderId(orderId!),
-    enabled: !!orderId,
+    queryKey: ["review", orderIdParam],
+    queryFn: () => api.getReviewByOrderId(orderIdParam!),
+    enabled: !isLinkMode && !!orderIdParam,
   });
 
-  const form = useForm<z.infer<typeof reviewSchema>>({
-    resolver: zodResolver(reviewSchema),
-    defaultValues: {
-      overallRating: undefined,
-      fairPrice: undefined,
+  const order = isLinkMode ? linkContext?.order : legacyOrder;
+  const pizza = isLinkMode ? linkContext?.pizza : legacyPizza;
+  const alreadyReviewed = isLinkMode
+    ? Boolean(linkContext?.alreadyReviewed)
+    : Boolean(existingReview);
+
+  const reviewSchema = useMemo(() => buildReviewSchema(questions), [questions]);
+  type ReviewFormValues = z.infer<typeof reviewSchema>;
+
+  const defaultValues = useMemo(() => {
+    const values: Record<string, string | number | undefined> = {
       customPriceAmount: "",
-      crustFlavor: undefined,
-      crustQuality: undefined,
-      toppingsBalance: undefined,
-      wouldOrderAgain: undefined,
-      additionalThoughts: "",
-    },
+    };
+    for (const q of questions) {
+      values[q.key] = q.answerType === "stars" ? undefined : "";
+    }
+    return values;
+  }, [questions]);
+
+  const form = useForm<ReviewFormValues>({
+    resolver: zodResolver(reviewSchema),
+    defaultValues,
+    values: defaultValues as ReviewFormValues,
   });
 
-  const user = api.getCurrentUser();
+  const [submitted, setSubmitted] = useState(false);
+  const [hoveredStar, setHoveredStar] = useState<number | null>(null);
 
   const createReviewMutation = useMutation({
-    mutationFn: (data: z.infer<typeof reviewSchema>) => {
-      // Map overallRating to numeric rating for backward compatibility
-      const ratingMap: Record<string, number> = {
-        "Needs improvement": 2,
-        "Good": 3,
-        "Awesome": 4,
-        "Mind-blowing!": 5,
-      };
-      
+    mutationFn: (data: ReviewFormValues) => {
+      const answers = questions.map((q) => {
+        let value = String(data[q.key] ?? "").trim();
+        if (q.key === "fair_price" && value === "Other") {
+          value = `Other: ${String(data.customPriceAmount ?? "").trim()}`;
+        }
+        return { questionId: q.id, questionKey: q.key, value };
+      }).filter((a) => a.value.length > 0);
+
+      const payload = { answers };
+
+      if (isLinkMode && linkToken) {
+        return api.addReviewByLink(linkToken, payload);
+      }
+
       return api.addReview({
+        ...payload,
         orderId: orderId!,
-        pizzaId: order!.pizzaId,
-        rating: ratingMap[data.overallRating] || 3,
-        comment: data.additionalThoughts || "",
-        author: user?.name || "Anonymous",
-        overallRating: data.overallRating,
-        fairPrice: data.fairPrice === "Other" ? `Other: ${data.customPriceAmount}` : data.fairPrice,
-        customPriceAmount: data.customPriceAmount,
-        crustFlavor: data.crustFlavor,
-        crustQuality: data.crustQuality,
-        toppingsBalance: data.toppingsBalance,
-        wouldOrderAgain: data.wouldOrderAgain,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["review", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["review-link", linkToken] });
       queryClient.invalidateQueries({ queryKey: ["my-orders"] });
       queryClient.invalidateQueries({ queryKey: ["reviews"] });
       toast({
         title: "Thank you!",
         description: "Your review has been submitted successfully.",
       });
-      setTimeout(() => {
-        setLocation("/profile");
-      }, 2000);
+      if (isLinkMode) {
+        setSubmitted(true);
+      } else {
+        setTimeout(() => {
+          setLocation("/profile");
+        }, 2000);
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -140,24 +192,29 @@ export default function Review() {
   });
 
   useEffect(() => {
+    if (isLinkMode) {
+      return;
+    }
+    const user = api.getCurrentUser();
     if (!user) {
       setLocation("/login");
     }
-  }, [user, setLocation]);
+  }, [isLinkMode, setLocation]);
 
   useEffect(() => {
-    if (existingReview) {
-      toast({
-        title: "Already Reviewed",
-        description: "You've already submitted a review for this order.",
-      });
-      setLocation("/profile");
+    if (isLinkMode || !existingReview) {
+      return;
     }
-  }, [existingReview, toast, setLocation]);
+    toast({
+      title: "Already Reviewed",
+      description: "You've already submitted a review for this order.",
+    });
+    setLocation("/profile");
+  }, [isLinkMode, existingReview, toast, setLocation]);
 
-  if (!orderId) {
+  if (!isLinkMode && !orderIdParam) {
     return (
-      <Layout>
+      <Layout minimal>
         <div className="max-w-2xl mx-auto py-12 text-center">
           <p className="text-muted-foreground">Invalid review link</p>
         </div>
@@ -165,9 +222,12 @@ export default function Review() {
     );
   }
 
-  if (orderLoading || pizzaLoading) {
+  if (
+    (isLinkMode && linkLoading) ||
+    (!isLinkMode && (orderLoading || pizzaLoading || questionsLoading))
+  ) {
     return (
-      <Layout>
+      <Layout minimal>
         <div className="max-w-2xl mx-auto py-12 flex justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -175,9 +235,21 @@ export default function Review() {
     );
   }
 
+  if (isLinkMode && linkError) {
+    return (
+      <Layout minimal>
+        <div className="max-w-2xl mx-auto py-12 text-center space-y-2">
+          <p className="text-muted-foreground">
+            {linkError instanceof Error ? linkError.message : "This review link is invalid."}
+          </p>
+        </div>
+      </Layout>
+    );
+  }
+
   if (!order || !pizza) {
     return (
-      <Layout>
+      <Layout minimal>
         <div className="max-w-2xl mx-auto py-12 text-center">
           <p className="text-muted-foreground">Order or pizza not found</p>
         </div>
@@ -185,9 +257,30 @@ export default function Review() {
     );
   }
 
-  if (order.status !== "completed" && order.status !== "delivered") {
+  if (submitted || alreadyReviewed) {
     return (
-      <Layout>
+      <Layout minimal>
+        <div className="max-w-2xl mx-auto py-12 text-center space-y-4">
+          <CheckCircle2 className="h-12 w-12 text-primary mx-auto" />
+          <h1 className="text-3xl font-display font-bold">Thank you!</h1>
+          <p className="text-muted-foreground">
+            {alreadyReviewed && !submitted
+              ? "This review link has already been used."
+              : "Your review was submitted. This link no longer works."}
+          </p>
+          <Button onClick={() => setLocation("/")}>Back to home</Button>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (
+    !isLinkMode &&
+    order.status !== "completed" &&
+    order.status !== "delivered"
+  ) {
+    return (
+      <Layout minimal>
         <div className="max-w-2xl mx-auto py-12 text-center">
           <p className="text-muted-foreground">This order hasn't been completed yet.</p>
         </div>
@@ -195,14 +288,14 @@ export default function Review() {
     );
   }
 
-  const onSubmit = (values: z.infer<typeof reviewSchema>) => {
+  const onSubmit = (values: ReviewFormValues) => {
     createReviewMutation.mutate(values);
   };
 
-  const fairPrice = form.watch("fairPrice");
+  const fairPrice = form.watch("fair_price" as keyof ReviewFormValues);
 
   return (
-    <Layout>
+    <Layout minimal>
       <div className="max-w-3xl mx-auto py-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -259,285 +352,184 @@ export default function Review() {
             <CardContent>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                  {/* Question 1: Overall Rating */}
-                  <FormField
-                    control={form.control}
-                    name="overallRating"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base font-semibold">
-                          1️⃣ What did you think of this recipe overall?
-                        </FormLabel>
-                        <FormControl>
-                          <RadioGroup
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            className="space-y-3 mt-2"
-                          >
-                            {["Needs improvement", "Good", "Awesome", "Mind-blowing!"].map((option) => (
-                              <div key={option} className="flex items-center space-x-2">
-                                <RadioGroupItem value={option} id={`overall-${option}`} />
-                                <label
-                                  htmlFor={`overall-${option}`}
-                                  className="text-sm cursor-pointer flex-1"
+                  {questions.map((question, index) => {
+                    const options = parseOptions(question.options);
+
+                    if (question.answerType === "stars") {
+                      return (
+                        <FormField
+                          key={question.id}
+                          control={form.control}
+                          name={question.key as keyof ReviewFormValues}
+                          render={({ field }) => {
+                            const selected = Number(field.value) || 0;
+                            const display = hoveredStar ?? selected;
+                            return (
+                              <FormItem>
+                                <FormLabel className="text-base font-semibold">
+                                  {index + 1}. {question.prompt}
+                                </FormLabel>
+                                {question.helpText && (
+                                  <p className="text-sm text-muted-foreground mb-2">
+                                    {question.helpText}
+                                  </p>
+                                )}
+                                <FormControl>
+                                  <div
+                                    className="flex items-center gap-1 pt-1"
+                                    onMouseLeave={() => setHoveredStar(null)}
+                                  >
+                                    {[1, 2, 3, 4, 5].map((star) => {
+                                      const filled = star <= display;
+                                      return (
+                                        <button
+                                          key={star}
+                                          type="button"
+                                          aria-label={`${star} star${star === 1 ? "" : "s"}`}
+                                          className="p-1 rounded-md transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                          onMouseEnter={() => setHoveredStar(star)}
+                                          onClick={() => field.onChange(star)}
+                                        >
+                                          <Star
+                                            className={`h-8 w-8 ${
+                                              filled
+                                                ? "fill-amber-400 text-amber-400"
+                                                : "text-muted-foreground/40"
+                                            }`}
+                                          />
+                                        </button>
+                                      );
+                                    })}
+                                    {selected > 0 && (
+                                      <span className="ml-2 text-sm text-muted-foreground">
+                                        {selected}/5
+                                      </span>
+                                    )}
+                                  </div>
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            );
+                          }}
+                        />
+                      );
+                    }
+
+                    if (question.answerType === "text") {
+                      return (
+                        <FormField
+                          key={question.id}
+                          control={form.control}
+                          name={question.key as keyof ReviewFormValues}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-base font-semibold">
+                                {index + 1}. {question.prompt}
+                              </FormLabel>
+                              {question.helpText && (
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  {question.helpText}
+                                </p>
+                              )}
+                              <FormControl>
+                                <Textarea
+                                  placeholder="Share your thoughts..."
+                                  className="min-h-[120px]"
+                                  value={String(field.value ?? "")}
+                                  onChange={field.onChange}
+                                  onBlur={field.onBlur}
+                                  name={field.name}
+                                  ref={field.ref}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      );
+                    }
+
+                    return (
+                      <div key={question.id} className="space-y-4">
+                        <FormField
+                          control={form.control}
+                          name={question.key as keyof ReviewFormValues}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-base font-semibold">
+                                {index + 1}. {question.prompt}
+                              </FormLabel>
+                              {question.helpText && (
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  {question.helpText}
+                                </p>
+                              )}
+                              <FormControl>
+                                <RadioGroup
+                                  onValueChange={field.onChange}
+                                  value={String(field.value ?? "")}
+                                  className="space-y-3 mt-2"
                                 >
-                                  {option}
-                                </label>
-                              </div>
-                            ))}
-                          </RadioGroup>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                                  {options.map((option) => (
+                                    <div key={option} className="flex items-center space-x-2">
+                                      <RadioGroupItem
+                                        value={option}
+                                        id={`${question.key}-${option}`}
+                                      />
+                                      <label
+                                        htmlFor={`${question.key}-${option}`}
+                                        className="text-sm cursor-pointer flex-1"
+                                      >
+                                        {option}
+                                      </label>
+                                    </div>
+                                  ))}
+                                </RadioGroup>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
-
-                  {/* Question 2: Crust Flavor */}
-                  <FormField
-                    control={form.control}
-                    name="crustFlavor"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base font-semibold">
-                          2️⃣ How was the crust flavor?
-                        </FormLabel>
-                        <p className="text-sm text-muted-foreground mb-2">(Flavor, depth, fermentation, savoriness)</p>
-                        <FormControl>
-                          <RadioGroup
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            className="space-y-3 mt-2"
-                          >
-                            {[
-                              "Underdeveloped / bland",
-                              "Good flavor",
-                              "Very flavorful",
-                              "Exceptional — delicious on its own",
-                            ].map((option) => (
-                              <div key={option} className="flex items-center space-x-2">
-                                <RadioGroupItem value={option} id={`flavor-${option}`} />
-                                <label
-                                  htmlFor={`flavor-${option}`}
-                                  className="text-sm cursor-pointer flex-1"
-                                >
-                                  {option}
-                                </label>
-                              </div>
-                            ))}
-                          </RadioGroup>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Question 3: Crust Quality */}
-                  <FormField
-                    control={form.control}
-                    name="crustQuality"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base font-semibold">
-                          3️⃣ How was the crust quality & texture?
-                        </FormLabel>
-                        <p className="text-sm text-muted-foreground mb-2">(Choose the closest match)</p>
-                        <FormControl>
-                          <RadioGroup
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            className="space-y-3 mt-2"
-                          >
-                            {[
-                              "Too dense / underbaked",
-                              "Too chewy",
-                              "Good structure but could be lighter",
-                              "Light, airy, and delicious",
-                              "Perfect — crisp outside, airy inside",
-                            ].map((option) => (
-                              <div key={option} className="flex items-center space-x-2">
-                                <RadioGroupItem value={option} id={`quality-${option}`} />
-                                <label
-                                  htmlFor={`quality-${option}`}
-                                  className="text-sm cursor-pointer flex-1"
-                                >
-                                  {option}
-                                </label>
-                              </div>
-                            ))}
-                          </RadioGroup>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Question 4: Toppings Balance */}
-                  <FormField
-                    control={form.control}
-                    name="toppingsBalance"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base font-semibold">
-                          4️⃣ How well did the toppings work together?
-                        </FormLabel>
-                        <FormControl>
-                          <RadioGroup
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            className="space-y-3 mt-2"
-                          >
-                            {[
-                              "Not well / flavors clashed",
-                              "Mostly good but something felt off",
-                              "Well-balanced and tasty",
-                              "Fantastic — perfectly harmonious",
-                            ].map((option) => (
-                              <div key={option} className="flex items-center space-x-2">
-                                <RadioGroupItem value={option} id={`toppings-${option}`} />
-                                <label
-                                  htmlFor={`toppings-${option}`}
-                                  className="text-sm cursor-pointer flex-1"
-                                >
-                                  {option}
-                                </label>
-                              </div>
-                            ))}
-                          </RadioGroup>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Question 5: Would Order Again */}
-                  <FormField
-                    control={form.control}
-                    name="wouldOrderAgain"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base font-semibold">
-                          5️⃣ Would you order this pizza again?
-                        </FormLabel>
-                        <FormControl>
-                          <RadioGroup
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            className="space-y-3 mt-2"
-                          >
-                            {[
-                              "No",
-                              "Maybe",
-                              "Yes",
-                              "Definitely — put it on the permanent menu!",
-                            ].map((option) => (
-                              <div key={option} className="flex items-center space-x-2">
-                                <RadioGroupItem value={option} id={`order-${option}`} />
-                                <label
-                                  htmlFor={`order-${option}`}
-                                  className="text-sm cursor-pointer flex-1"
-                                >
-                                  {option}
-                                </label>
-                              </div>
-                            ))}
-                          </RadioGroup>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                      {/* Question 6: Fair Price */}
-                      <FormField
-                    control={form.control}
-                    name="fairPrice"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base font-semibold">
-                          6️⃣ In your opinion, what is a fair price for this pizza?
-                        </FormLabel>
-                        <p className="text-sm text-muted-foreground mb-2">(What would you comfortably pay for it?)</p>
-                        <FormControl>
-                          <RadioGroup
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            className="space-y-3 mt-2"
-                          >
-                            {["$15–$17", "$18–$20", "$21–$23", "$24–$26", "Other"].map((option) => (
-                              <div key={option} className="flex items-center space-x-2">
-                                <RadioGroupItem value={option} id={`price-${option}`} />
-                                <label
-                                  htmlFor={`price-${option}`}
-                                  className="text-sm cursor-pointer flex-1"
-                                >
-                                  {option}
-                                </label>
-                              </div>
-                            ))}
-                          </RadioGroup>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Custom Price Input */}
-                  {fairPrice === "Other" && (
-                    <FormField
-                      control={form.control}
-                      name="customPriceAmount"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Please enter amount:</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="e.g., $30"
-                              {...field}
-                              className="max-w-xs"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
-
-                  {/* Question 7: Additional Thoughts */}
-                  <FormField
-                    control={form.control}
-                    name="additionalThoughts"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-base font-semibold">
-                          7️⃣ Any additional thoughts, suggestions, or flavor notes?
-                        </FormLabel>
-                        <p className="text-sm text-muted-foreground mb-2">
-                          Please share anything that would help us improve this recipe.
-                        </p>
-                        <FormControl>
-                          <Textarea
-                            placeholder="Share your thoughts..."
-                            className="min-h-[120px]"
-                            {...field}
+                        {question.key === "fair_price" && fairPrice === "Other" && (
+                          <FormField
+                            control={form.control}
+                            name={"customPriceAmount" as keyof ReviewFormValues}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Please enter amount:</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    placeholder="e.g., $30"
+                                    value={String(field.value ?? "")}
+                                    onChange={field.onChange}
+                                    onBlur={field.onBlur}
+                                    name={field.name}
+                                    ref={field.ref}
+                                    className="max-w-xs"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
                           />
-                        </FormControl>
-                        <FormMessage />∫
-                      </FormItem>
-                    )}
-                  />
+                        )}
+                      </div>
+                    );
+                  })}
 
                   <div className="flex gap-4 pt-4">
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setLocation("/profile")}
+                      onClick={() => setLocation(isLinkMode ? "/" : "/profile")}
                       className="flex-1"
                     >
                       Cancel
                     </Button>
                     <Button
                       type="submit"
-                      disabled={createReviewMutation.isPending}
+                      disabled={createReviewMutation.isPending || questions.length === 0}
                       className="flex-1"
                     >
                       {createReviewMutation.isPending ? (

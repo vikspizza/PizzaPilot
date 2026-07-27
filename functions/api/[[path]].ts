@@ -2,7 +2,7 @@
 // This avoids importing db.ts which has pg dependencies
 import { DatabaseStorage } from "../../server/storage-cf";
 import { getDb } from "../../server/db-cf";
-import { insertPizzaSchema, insertOrderSchema, insertReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema, insertSlotListSchema, insertPickupSlotSchema, createOrderRequestSchema } from "../../shared/schema";
+import { insertPizzaSchema, insertOrderSchema, submitReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema, insertSlotListSchema, insertPickupSlotSchema, createOrderRequestSchema } from "../../shared/schema";
 import { createOrderFromRequest } from "../../server/order-create";
 import { z } from "zod";
 import { sendSms } from "../../server/sms";
@@ -10,7 +10,9 @@ import { getTryPieContext, getTryPieContextForBatch } from "../../server/try-pie
 import { createTryPieHold, releaseTryPieHold } from "../../server/try-pie-hold";
 import { createTryPieInviteForBatch, validateUnusedTryPieInvite } from "../../server/try-pie-invite";
 import { normalizeInviteCode } from "../../server/try-pie-invite-storage";
+import { createReviewFromLink, getReviewLinkContext } from "../../server/review-from-link";
 import { resolveHoldStore } from "../../server/try-pie-hold-store";
+import { resolveReviewLinkSecret } from "../../shared/review-link";
 import { normalizePickupTime } from "../../shared/pickup-time";
 import {
   createAdminToken,
@@ -249,6 +251,10 @@ export async function onRequest(context: any) {
         emailFrom: env.EMAIL_FROM,
         siteUrl,
         logoBaseUrl: requestOrigin,
+        reviewLinkSecret: resolveReviewLinkSecret(
+          env.REVIEW_LINK_SECRET,
+          env.ADMIN_PASSWORD,
+        ),
       }, holdStore);
 
       if (!result.ok) {
@@ -316,19 +322,56 @@ export async function onRequest(context: any) {
     }
 
     // ===== REVIEWS =====
+    if (path === "/api/review-questions" && method === "GET") {
+      const questions = await storage.getReviewQuestions();
+      return jsonResponse(questions);
+    }
+
     if (path === "/api/reviews" && method === "GET") {
       const pizzaId = url.searchParams.get("pizzaId");
       const orderId = url.searchParams.get("orderId");
-      
+
       if (orderId) {
         const review = await storage.getReviewByOrderId(orderId);
         return jsonResponse(review ? [review] : []);
       }
-      
+
       const reviews = pizzaId
         ? await storage.getReviewsByPizzaId(pizzaId)
         : await storage.getReviews();
       return jsonResponse(reviews);
+    }
+
+    if (path === "/api/reviews/link" && method === "GET") {
+      const token = url.searchParams.get("token") ?? "";
+      if (!token) {
+        return jsonResponse({ error: "token is required" }, 400);
+      }
+      const result = await getReviewLinkContext(storage, token, {
+        REVIEW_LINK_SECRET: env.REVIEW_LINK_SECRET,
+        ADMIN_PASSWORD: env.ADMIN_PASSWORD,
+      });
+      if (!result.ok) {
+        return jsonResponse({ error: result.error }, result.status);
+      }
+      return jsonResponse(result.data);
+    }
+
+    if (path === "/api/reviews/link" && method === "POST") {
+      const body = await parseBody(request);
+      const token = String(body.token ?? "");
+      if (!token) {
+        return jsonResponse({ error: "token is required" }, 400);
+      }
+      const { token: _token, ...reviewBody } = body;
+      const result = await createReviewFromLink(storage, token, reviewBody, {
+        REVIEW_LINK_SECRET: env.REVIEW_LINK_SECRET,
+        ADMIN_PASSWORD: env.ADMIN_PASSWORD,
+      });
+      if (!result.ok) {
+        return jsonResponse({ error: result.error }, result.status);
+      }
+      return jsonResponse(result.data, 201);
     }
 
     if (path === "/api/reviews/pending" && method === "GET") {
@@ -342,7 +385,7 @@ export async function onRequest(context: any) {
 
     if (path === "/api/reviews" && method === "POST") {
       const body = await parseBody(request);
-      const review = insertReviewSchema.parse(body);
+      const review = submitReviewSchema.parse(body);
       
       const existingReview = await storage.getReviewByOrderId(review.orderId);
       if (existingReview) {
@@ -357,8 +400,13 @@ export async function onRequest(context: any) {
         return jsonResponse({ error: "Can only review delivered or completed orders" }, 400);
       }
       
-      const newReview = await storage.createReview(review);
-      return jsonResponse(newReview, 201);
+      try {
+        const newReview = await storage.createReview(review);
+        return jsonResponse(newReview, 201);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to create review";
+        return jsonResponse({ error: message }, 400);
+      }
     }
 
     // ===== AUTH =====

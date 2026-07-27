@@ -85,7 +85,7 @@ export default function Profile() {
 
   if (isLoadingUser || !user) {
     return (
-      <Layout basicLogo>
+      <Layout minimal basicLogo>
         <div className="flex justify-center py-24">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -94,7 +94,7 @@ export default function Profile() {
   }
 
   return (
-    <Layout basicLogo>
+    <Layout minimal basicLogo>
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-display font-bold">My Profile</h1>

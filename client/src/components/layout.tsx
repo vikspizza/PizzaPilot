@@ -10,11 +10,14 @@ export function Layout({
   children,
   basicLogo = false,
   basicLogoWidth = "md",
+  minimal = false,
 }: {
   children: React.ReactNode;
   basicLogo?: boolean;
   /** Match page content width: md = login card (448px), 4xl = admin dashboard */
   basicLogoWidth?: "md" | "4xl";
+  /** Hide nav links and footer — used for review, admin, etc. */
+  minimal?: boolean;
 }) {
   const [location, setLocation] = useLocation();
   const [user, setUser] = useState<ReturnType<typeof api.getCurrentUser> | null>(null);
@@ -70,6 +73,7 @@ export function Layout({
             </div>
           </a>
 
+          {!minimal && (
           <nav className="flex items-center gap-6 pb-3 pt-0 max-w-4xl mx-auto px-4 justify-end">
             <a
               href="/"
@@ -160,6 +164,7 @@ export function Layout({
               )}
             </Button>
           </nav>
+          )}
         </div>
       </header>
 
@@ -199,6 +204,7 @@ return myPie.serve("First In, First Delicious");`}
         {children}
       </main>
 
+      {!minimal && (
       <footer className="border-t border-border/40 bg-card/30">
         <div className="container mx-auto px-4 py-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
           <div className="flex flex-col items-center md:items-start gap-1">
@@ -216,6 +222,7 @@ return myPie.serve("First In, First Delicious");`}
           </div>
         </div>
       </footer>
+      )}
     </div>
   );
 }

@@ -47,6 +47,7 @@ function Router() {
       <Route path="/success" component={OrderSuccess} />
       <Route path="/login" component={Login} />
       <Route path="/profile" component={Profile} />
+      <Route path="/review" component={Review} />
       <Route path="/review/:orderId" component={Review} />
       <Route component={NotFound} />
     </Switch>
