@@ -113,20 +113,20 @@ export function OrderModal({ isOpen, onClose, pizza }: OrderModalProps) {
         form.setValue("customerEmail", u.email);
         form.setValue("customerPhone", u.phone);
         
-        // Check for pending reviews
-        api.getPendingReviews(u.phone).then(pending => {
-          if (pending.length > 0) {
-            toast({
-              title: "Review Required",
-              description: `Please review your previous ${pending.length === 1 ? 'order' : 'orders'} before placing a new one. You can find the review link in your order history.`,
-              variant: "destructive",
-            });
-            onClose();
-            setLocation("/profile");
-          }
-        }).catch(() => {
-          // Silently fail if check doesn't work
-        });
+        // Temporarily disabled — re-enable with server REQUIRE_PREVIOUS_ORDER_REVIEW.
+        // api.getPendingReviews(u.phone).then(pending => {
+        //   if (pending.length > 0) {
+        //     toast({
+        //       title: "Review Required",
+        //       description: `Please review your previous ${pending.length === 1 ? 'order' : 'orders'} before placing a new one. You can find the review link in your order history.`,
+        //       variant: "destructive",
+        //     });
+        //     onClose();
+        //     setLocation("/profile");
+        //   }
+        // }).catch(() => {
+        //   // Silently fail if check doesn't work
+        // });
       }
     }
   }, [isOpen, onClose, setLocation, toast, form]);

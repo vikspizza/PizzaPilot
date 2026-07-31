@@ -6,6 +6,9 @@ import type { HoldStore } from "./try-pie-hold-store";
 import { validateUnusedTryPieInvite } from "./try-pie-invite";
 import { normalizeInviteCode } from "./try-pie-invite-storage";
 
+/** Temporarily disabled — set to true to require a review before the next order. */
+const REQUIRE_PREVIOUS_ORDER_REVIEW = false;
+
 export type CreateOrderResult =
   | { ok: true; order: OrderWithCustomer }
   | { ok: false; status: number; error: string };
@@ -32,14 +35,16 @@ export async function createOrderFromRequest(
     slotId: orderRequest.slotId,
   });
 
-  const pendingReviews = await storage.getPendingReviewsByCustomerPhone(customer.phone);
-  if (pendingReviews.length > 0) {
-    return {
-      ok: false,
-      status: 400,
-      error:
-        "Please review your previous order before placing a new one. You can find the review link in your order history.",
-    };
+  if (REQUIRE_PREVIOUS_ORDER_REVIEW) {
+    const pendingReviews = await storage.getPendingReviewsByCustomerPhone(customer.phone);
+    if (pendingReviews.length > 0) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "Please review your previous order before placing a new one. You can find the review link in your order history.",
+      };
+    }
   }
 
   const pizza = await storage.getPizzaById(order.pizzaId);
