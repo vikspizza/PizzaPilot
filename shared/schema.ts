@@ -188,6 +188,39 @@ export type Review = {
   createdAt: string;
 };
 
+export type BatchReviewCustomer = {
+  orderId: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string;
+  rating: number;
+  createdAt: string;
+  answers: Array<{
+    questionId: string;
+    questionKey: string;
+    prompt: string;
+    value: string;
+    sortOrder: number;
+  }>;
+};
+
+export type BatchReviewAnalytics = {
+  batch: {
+    id: string;
+    batchNumber: number;
+    serviceDate: string;
+  };
+  pizzas: Array<{
+    pizza: {
+      id: string;
+      name: string;
+      description: string;
+      imageUrl: string | null;
+    };
+    customers: BatchReviewCustomer[];
+  }>;
+};
+
 /** @deprecated Use submitReviewSchema */
 export const insertReviewSchema = submitReviewSchema;
 export type InsertReview = SubmitReviewRequest;

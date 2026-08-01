@@ -291,6 +291,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/reviews/analytics", async (req, res) => {
+    try {
+      const batchId = String(req.query.batchId ?? "");
+      if (!batchId) {
+        return res.status(400).json({ error: "batchId is required" });
+      }
+      const analytics = await storage.getBatchReviewAnalytics(batchId);
+      if (!analytics) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching review analytics:", error);
+      res.status(500).json({ error: "Failed to fetch review analytics" });
+    }
+  });
+
   app.get("/api/reviews/link", async (req, res) => {
     try {
       const token = String(req.query.token ?? "");

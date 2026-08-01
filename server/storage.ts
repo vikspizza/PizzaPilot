@@ -14,6 +14,7 @@ import type {
   Review,
   ReviewQuestion,
   SubmitReviewRequest,
+  BatchReviewAnalytics,
   Settings,
   InsertSettings,
   OtpCode,
@@ -51,6 +52,7 @@ import {
 import {
   insertReviewAnswers,
   selectActiveReviewQuestions,
+  selectBatchReviewAnalytics,
   selectReviewByOrderId,
   selectReviewedOrderIds,
   selectReviews,
@@ -96,6 +98,7 @@ export interface IStorage {
   getReviews(): Promise<Review[]>;
   getReviewsByPizzaId(pizzaId: string): Promise<Review[]>;
   getReviewByOrderId(orderId: string): Promise<Review | undefined>;
+  getBatchReviewAnalytics(batchId: string): Promise<BatchReviewAnalytics | undefined>;
   getPendingReviewsByCustomerPhone(phone: string): Promise<OrderWithCustomer[]>;
   createReview(review: SubmitReviewRequest): Promise<Review>;
 
@@ -303,6 +306,10 @@ export class DatabaseStorage implements IStorage {
 
   async getReviewByOrderId(orderId: string): Promise<Review | undefined> {
     return selectReviewByOrderId(db, orderId);
+  }
+
+  async getBatchReviewAnalytics(batchId: string): Promise<BatchReviewAnalytics | undefined> {
+    return selectBatchReviewAnalytics(db, batchId);
   }
 
   async getPendingReviewsByCustomerPhone(phone: string): Promise<OrderWithCustomer[]> {

@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Lock, Check, X, ChefHat, Package, Truck, XCircle, Plus, Edit, Trash2, Calendar, Clock } from "lucide-react";
+import { Loader2, Lock, Check, X, ChefHat, Package, Truck, XCircle, Plus, Edit, Trash2, Calendar, Clock, Star } from "lucide-react";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext } from "@/components/ui/pagination";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -264,6 +264,7 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
             <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="menu">Menu Management</TabsTrigger>
             <TabsTrigger value="batches">Batch Management</TabsTrigger>
+            <TabsTrigger value="reviews">Reviews</TabsTrigger>
             <TabsTrigger value="slots">Pickup Slots</TabsTrigger>
           </TabsList>
 
@@ -512,6 +513,10 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
 
           <TabsContent value="batches">
             <BatchManagement pizzas={pizzas || []} />
+          </TabsContent>
+
+          <TabsContent value="reviews">
+            <ReviewAnalytics onSessionExpired={onSessionExpired} />
           </TabsContent>
 
           <TabsContent value="slots">
@@ -1825,5 +1830,267 @@ function EditSlotListDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ReviewAnalytics({ onSessionExpired }: { onSessionExpired: () => void }) {
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [selectedPizzaId, setSelectedPizzaId] = useState("");
+  const [customerPage, setCustomerPage] = useState(1);
+
+  const { data: batches, isLoading: batchesLoading } = useQuery({
+    queryKey: ["batches"],
+    queryFn: () => api.getBatches(),
+  });
+
+  const {
+    data: analytics,
+    isLoading: analyticsLoading,
+    error: analyticsError,
+  } = useQuery({
+    queryKey: ["review-analytics", selectedBatchId],
+    queryFn: () => api.getBatchReviewAnalytics(selectedBatchId),
+    enabled: Boolean(selectedBatchId),
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (
+      analyticsError instanceof Error &&
+      analyticsError.message.toLowerCase().includes("session expired")
+    ) {
+      onSessionExpired();
+    }
+  }, [analyticsError, onSessionExpired]);
+
+  useEffect(() => {
+    setCustomerPage(1);
+    setSelectedPizzaId("");
+  }, [selectedBatchId]);
+
+  useEffect(() => {
+    if (!analytics?.pizzas.length) {
+      setSelectedPizzaId("");
+      return;
+    }
+    if (!selectedPizzaId || !analytics.pizzas.some((p) => p.pizza.id === selectedPizzaId)) {
+      setSelectedPizzaId(analytics.pizzas[0].pizza.id);
+    }
+  }, [analytics, selectedPizzaId]);
+
+  useEffect(() => {
+    setCustomerPage(1);
+  }, [selectedPizzaId]);
+
+  const sortedBatches = useMemo(() => {
+    if (!batches) return [];
+    return [...batches].sort((a, b) => {
+      if (a.serviceDate === b.serviceDate) {
+        return b.batchNumber - a.batchNumber;
+      }
+      return b.serviceDate.localeCompare(a.serviceDate);
+    });
+  }, [batches]);
+
+  const selectedPizzaGroup = analytics?.pizzas.find((p) => p.pizza.id === selectedPizzaId);
+  const customers = selectedPizzaGroup?.customers ?? [];
+  const totalCustomers = customers.length;
+  const currentCustomer = customers[customerPage - 1];
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between space-y-0">
+          <div>
+            <CardTitle>Review Analytics</CardTitle>
+            <CardDescription>Browse customer feedback by batch</CardDescription>
+          </div>
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end lg:w-auto">
+            <div className="flex w-full flex-col gap-2 sm:min-w-[18rem]">
+              <Label htmlFor="reviews-batch-filter" className="text-sm text-muted-foreground">
+                Batch
+              </Label>
+              <Select
+                value={selectedBatchId || undefined}
+                onValueChange={setSelectedBatchId}
+                disabled={batchesLoading || sortedBatches.length === 0}
+              >
+                <SelectTrigger id="reviews-batch-filter">
+                  <SelectValue placeholder={batchesLoading ? "Loading…" : "Select a batch"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedBatches.map((batch) => (
+                    <SelectItem key={batch.id} value={batch.id}>
+                      {formatBatchOptionLabel(batch)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {analytics && analytics.pizzas.length > 1 ? (
+              <div className="flex w-full flex-col gap-2 sm:min-w-[16rem]">
+                <Label htmlFor="reviews-pizza-filter" className="text-sm text-muted-foreground">
+                  Pizza
+                </Label>
+                <Select value={selectedPizzaId || undefined} onValueChange={setSelectedPizzaId}>
+                  <SelectTrigger id="reviews-pizza-filter">
+                    <SelectValue placeholder="Select a pizza" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {analytics.pizzas.map(({ pizza, customers: pizzaCustomers }) => (
+                      <SelectItem key={pizza.id} value={pizza.id}>
+                        {pizza.name} ({pizzaCustomers.length})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!selectedBatchId ? (
+            <p className="text-muted-foreground">Select a batch to view reviews.</p>
+          ) : analyticsLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : analyticsError ? (
+            <p className="text-destructive">
+              {analyticsError instanceof Error
+                ? analyticsError.message
+                : "Failed to load review analytics"}
+            </p>
+          ) : !selectedPizzaGroup ? (
+            <p className="text-muted-foreground">No reviews submitted for this batch yet.</p>
+          ) : (
+            <div className="space-y-6">
+              <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <h3 className="text-xl font-display font-bold">{selectedPizzaGroup.pizza.name}</h3>
+                    <p className="text-sm text-muted-foreground max-w-2xl">
+                      {selectedPizzaGroup.pizza.description}
+                    </p>
+                  </div>
+                  {selectedPizzaGroup.pizza.imageUrl ? (
+                    <img
+                      src={selectedPizzaGroup.pizza.imageUrl}
+                      alt={selectedPizzaGroup.pizza.name}
+                      className="h-20 w-20 rounded-md object-cover"
+                    />
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+                  <span>
+                    <span className="font-medium text-foreground">Service date:</span>{" "}
+                    {formatBatchServiceDate(analytics!.batch.serviceDate)}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Batch:</span> #
+                    {analytics!.batch.batchNumber}
+                  </span>
+                  <span className="font-mono text-xs">
+                    ID {analytics!.batch.id.slice(0, 8)}…
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Reviews:</span> {totalCustomers}
+                  </span>
+                </div>
+              </div>
+
+              {totalCustomers === 0 ? (
+                <p className="text-muted-foreground">No customer reviews for this pizza.</p>
+              ) : (
+                <>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">
+                        Customer {customerPage} of {totalCustomers}
+                      </CardTitle>
+                      <CardDescription>
+                        {currentCustomer?.customerName}
+                        {currentCustomer?.rating ? (
+                          <span className="ml-2 inline-flex items-center gap-1 text-foreground">
+                            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                            {currentCustomer.rating}/5
+                          </span>
+                        ) : null}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="text-xs text-muted-foreground space-y-0.5">
+                        <p>{currentCustomer?.customerEmail}</p>
+                        <p>{currentCustomer?.customerPhone}</p>
+                        <p>
+                          Submitted{" "}
+                          {currentCustomer
+                            ? format(new Date(currentCustomer.createdAt), "MMM d, yyyy h:mm a")
+                            : "—"}
+                        </p>
+                        <p className="font-mono">
+                          Order {currentCustomer?.orderId.slice(0, 8).toUpperCase()}
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        {currentCustomer?.answers.map((answer) => (
+                          <div
+                            key={answer.questionId}
+                            className="rounded-md border border-border/60 px-3 py-2"
+                          >
+                            <p className="text-sm font-medium">{answer.prompt}</p>
+                            <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">
+                              {answer.questionKey === "star_rating"
+                                ? `${answer.value} / 5 stars`
+                                : answer.value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {totalCustomers > 1 ? (
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setCustomerPage((p) => Math.max(1, p - 1));
+                            }}
+                            className={customerPage <= 1 ? "pointer-events-none opacity-50" : ""}
+                          />
+                        </PaginationItem>
+                        <PaginationItem>
+                          <span className="px-3 text-sm text-muted-foreground">
+                            {customerPage} / {totalCustomers}
+                          </span>
+                        </PaginationItem>
+                        <PaginationItem>
+                          <PaginationNext
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setCustomerPage((p) => Math.min(totalCustomers, p + 1));
+                            }}
+                            className={
+                              customerPage >= totalCustomers
+                                ? "pointer-events-none opacity-50"
+                                : ""
+                            }
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  ) : null}
+                </>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

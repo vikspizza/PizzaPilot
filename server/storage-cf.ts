@@ -16,6 +16,7 @@ import type {
   Review,
   ReviewQuestion,
   SubmitReviewRequest,
+  BatchReviewAnalytics,
   Settings,
   InsertSettings,
   OtpCode,
@@ -52,6 +53,7 @@ import {
 import {
   insertReviewAnswers,
   selectActiveReviewQuestions,
+  selectBatchReviewAnalytics,
   selectReviewByOrderId,
   selectReviewedOrderIds,
   selectReviews,
@@ -214,6 +216,10 @@ class DatabaseStorage {
 
   async getReviewByOrderId(orderId: string): Promise<Review | undefined> {
     return selectReviewByOrderId(this.db, orderId);
+  }
+
+  async getBatchReviewAnalytics(batchId: string): Promise<BatchReviewAnalytics | undefined> {
+    return selectBatchReviewAnalytics(this.db, batchId);
   }
 
   async getPendingReviewsByCustomerPhone(phone: string): Promise<OrderWithCustomer[]> {

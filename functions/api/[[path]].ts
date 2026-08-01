@@ -327,6 +327,18 @@ export async function onRequest(context: any) {
       return jsonResponse(questions);
     }
 
+    if (path === "/api/reviews/analytics" && method === "GET") {
+      const batchId = url.searchParams.get("batchId") ?? "";
+      if (!batchId) {
+        return jsonResponse({ error: "batchId is required" }, 400);
+      }
+      const analytics = await storage.getBatchReviewAnalytics(batchId);
+      if (!analytics) {
+        return jsonResponse({ error: "Batch not found" }, 404);
+      }
+      return jsonResponse(analytics);
+    }
+
     if (path === "/api/reviews" && method === "GET") {
       const pizzaId = url.searchParams.get("pizzaId");
       const orderId = url.searchParams.get("orderId");

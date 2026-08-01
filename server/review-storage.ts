@@ -7,6 +7,8 @@ import type {
   ReviewAnswer,
   ReviewQuestion,
   SubmitReviewRequest,
+  BatchReviewAnalytics,
+  BatchReviewCustomer,
 } from "@shared/schema";
 
 type SchemaDb =
@@ -106,6 +108,7 @@ async function selectAnswerRows(
   db: SchemaDb,
   orderIds?: string[],
   pizzaId?: string,
+  batchId?: string,
 ) {
   const conditions = [];
   if (orderIds && orderIds.length > 0) {
@@ -113,6 +116,9 @@ async function selectAnswerRows(
   }
   if (pizzaId) {
     conditions.push(eq(schema.orders.pizzaId, pizzaId));
+  }
+  if (batchId) {
+    conditions.push(eq(schema.orders.batchId, batchId));
   }
 
   return db
@@ -143,6 +149,123 @@ export async function selectReviewsByPizzaId(
 ): Promise<Review[]> {
   const rows = await selectAnswerRows(db, undefined, pizzaId);
   return aggregateReviews(rows);
+}
+
+export async function selectReviewsByBatchId(
+  db: SchemaDb,
+  batchId: string,
+): Promise<Review[]> {
+  const rows = await selectAnswerRows(db, undefined, undefined, batchId);
+  return aggregateReviews(rows);
+}
+
+export async function selectBatchReviewAnalytics(
+  db: SchemaDb,
+  batchId: string,
+): Promise<BatchReviewAnalytics | undefined> {
+  const [batch] = await db
+    .select()
+    .from(schema.batches)
+    .where(eq(schema.batches.id, batchId))
+    .limit(1);
+  if (!batch) {
+    return undefined;
+  }
+
+  const rows = await selectAnswerRows(db, undefined, undefined, batchId);
+
+  type CustomerAgg = {
+    orderId: string;
+    pizzaId: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail: string;
+    answers: BatchReviewCustomer["answers"];
+    createdAt: Date;
+  };
+
+  const byOrder = new Map<string, CustomerAgg>();
+  for (const row of rows) {
+    let entry = byOrder.get(row.order.id);
+    if (!entry) {
+      entry = {
+        orderId: row.order.id,
+        pizzaId: row.order.pizzaId,
+        customerName: row.customer.name || "Guest",
+        customerPhone: row.customer.phone,
+        customerEmail: row.customer.email,
+        answers: [],
+        createdAt: row.answer.createdAt,
+      };
+      byOrder.set(row.order.id, entry);
+    }
+    if (row.answer.createdAt < entry.createdAt) {
+      entry.createdAt = row.answer.createdAt;
+    }
+    entry.answers.push({
+      questionId: row.question.id,
+      questionKey: row.question.key,
+      prompt: row.question.prompt,
+      value: row.answer.value,
+      sortOrder: row.question.sortOrder,
+    });
+  }
+
+  const customers = Array.from(byOrder.values()).map((entry) => {
+    const ratingRaw = entry.answers.find((a) => a.questionKey === "star_rating")?.value;
+    const rating = Number.parseInt(ratingRaw ?? "0", 10);
+    return {
+      orderId: entry.orderId,
+      pizzaId: entry.pizzaId,
+      customerName: entry.customerName,
+      customerPhone: entry.customerPhone,
+      customerEmail: entry.customerEmail,
+      rating: Number.isFinite(rating) ? rating : 0,
+      createdAt: entry.createdAt.toISOString(),
+      answers: entry.answers.sort((a, b) => a.sortOrder - b.sortOrder),
+    };
+  });
+
+  customers.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+
+  const pizzaIds = Array.from(new Set(customers.map((c) => c.pizzaId)));
+  const pizzaRows =
+    pizzaIds.length > 0
+      ? await db
+          .select()
+          .from(schema.pizzas)
+          .where(inArray(schema.pizzas.id, pizzaIds))
+      : [];
+  const pizzaById = new Map(pizzaRows.map((p) => [p.id, p]));
+
+  const pizzas = pizzaIds
+    .map((pizzaId) => {
+      const pizza = pizzaById.get(pizzaId);
+      if (!pizza) return null;
+      return {
+        pizza: {
+          id: pizza.id,
+          name: pizza.name,
+          description: pizza.description,
+          imageUrl: pizza.imageUrl,
+        },
+        customers: customers
+          .filter((c) => c.pizzaId === pizzaId)
+          .map(({ pizzaId: _pizzaId, ...rest }) => rest),
+      };
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null);
+
+  return {
+    batch: {
+      id: batch.id,
+      batchNumber: batch.batchNumber,
+      serviceDate: batch.serviceDate,
+    },
+    pizzas,
+  };
 }
 
 export async function selectReviewByOrderId(

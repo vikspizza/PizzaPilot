@@ -149,6 +149,37 @@ export type SubmitReviewRequest = {
   answers: SubmitReviewAnswer[];
 };
 
+export type BatchReviewAnalytics = {
+  batch: {
+    id: string;
+    batchNumber: number;
+    serviceDate: string;
+  };
+  pizzas: Array<{
+    pizza: {
+      id: string;
+      name: string;
+      description: string;
+      imageUrl: string | null;
+    };
+    customers: Array<{
+      orderId: string;
+      customerName: string;
+      customerPhone: string;
+      customerEmail: string;
+      rating: number;
+      createdAt: string;
+      answers: Array<{
+        questionId: string;
+        questionKey: string;
+        prompt: string;
+        value: string;
+        sortOrder: number;
+      }>;
+    }>;
+  }>;
+};
+
 export interface Settings {
   id: number;
   maxPiesPerDay: number;
@@ -352,6 +383,17 @@ export const api = {
     const url = pizzaId ? `/api/reviews?pizzaId=${pizzaId}` : "/api/reviews";
     const res = await fetch(url);
     if (!res.ok) throw new Error("Failed to fetch reviews");
+    return res.json();
+  },
+
+  getBatchReviewAnalytics: async (batchId: string): Promise<BatchReviewAnalytics> => {
+    const res = await fetch(`/api/reviews/analytics?batchId=${encodeURIComponent(batchId)}`, {
+      headers: adminAuthHeaders(),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || "Failed to fetch review analytics");
+    }
     return res.json();
   },
 
