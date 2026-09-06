@@ -3,7 +3,12 @@
 # .dev.vars is gitignored and used by Wrangler for local testing
 # See SECURITY.md for rotation and secret handling.
 
-DATABASE_URL=postgresql://user:password@host.neon.tech/dbname?sslmode=require
+# Production DB URL (also set as Cloudflare Pages secret named DATABASE_URL).
+# Local Wrangler ignores this when DEV_DATABASE_URL is set.
+DATABASE_URL=postgresql://user:password@prod-host.neon.tech/dbname?sslmode=require
+
+# Local / testing DB — preferred by wrangler pages dev and npm run db:push
+DEV_DATABASE_URL=postgresql://user:password@dev-host.neon.tech/dbname?sslmode=require
 
 # Optional: admin kitchen password (never commit a real value)
 ADMIN_PASSWORD=change-me
@@ -18,4 +23,3 @@ SITE_URL=https://your-site.pages.dev
 
 # Optional: dedicated secret for review email links (falls back to ADMIN_PASSWORD)
 # REVIEW_LINK_SECRET=change-me-review-links
-

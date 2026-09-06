@@ -10,18 +10,26 @@ npm install
 
 # 2. Environment (one-time)
 cp .dev.vars.example .dev.vars
-# Edit .dev.vars — set DATABASE_URL to your Neon connection string
+# Edit .dev.vars:
+#   DEV_DATABASE_URL  → your local/testing Neon DB (preferred for local)
+#   DATABASE_URL      → production Neon DB (reference; used by Cloudflare)
 
-# 3. Push schema (one-time or after schema changes)
-export DATABASE_URL="your-neon-connection-string"
+# 3. Push schema to the *dev* DB (one-time or after schema changes)
+#    db:push prefers DEV_DATABASE_URL when set in .dev.vars
 npm run db:push
 npm run seed   # optional
 
-# 4. Build and run
+# 4. Build and run (also starts against DEV_DATABASE_URL)
 npm run dev:cf
 ```
 
 App runs at the URL Wrangler prints (often `http://localhost:8788`).
+
+For Try a Pie holds, run the Durable Object worker in a second terminal:
+
+```bash
+npm run dev:holds
+```
 
 ## Deploy to Cloudflare
 
@@ -33,23 +41,36 @@ git push origin main
 npm run deploy:cf
 ```
 
-Set `DATABASE_URL` as a **Secret** in Cloudflare Pages → Settings → Environment variables.
+In Cloudflare Pages → Settings → Environment variables, set **`DATABASE_URL`** as a **Secret** (production Neon URL).  
+Do **not** set `DEV_DATABASE_URL` in Cloudflare — if only `DATABASE_URL` is present, that value is used automatically.
+
+## Database URL selection
+
+| Context | Variable used |
+|---------|----------------|
+| Local Wrangler / `db:push` | `DEV_DATABASE_URL` if set, else `DATABASE_URL` |
+| Cloudflare Pages (production) | `DATABASE_URL` secret only |
+
+Both can live in `.dev.vars` for convenience; local code prefers `DEV_DATABASE_URL`.  
+To force the production URL from a local script: `USE_PROD_DB=1`.
 
 ## Environment variables
 
 | Where | File / place |
 |-------|----------------|
-| Local Wrangler | `.dev.vars` |
+| Local Wrangler | `.dev.vars` (gitignored) |
 | Cloudflare Pages | Dashboard → Environment variables (Secret) |
 
-Required: `DATABASE_URL` (Neon connection string with `?sslmode=require`).
+Required locally: `DEV_DATABASE_URL` (or `DATABASE_URL`).  
+Required in Cloudflare: `DATABASE_URL` (Neon connection string with `?sslmode=require`).
 
 ## Optional: Express dev server
 
 For a Node/Express + Vite workflow (not Cloudflare runtime):
 
 ```bash
-export DATABASE_URL="your-neon-connection-string"
+# Prefer loading from .dev.vars via your shell, or:
+export DATABASE_URL="your-dev-neon-connection-string"
 npm run dev
 ```
 
@@ -67,11 +88,13 @@ npm run build:cf && npm run dev:cf
 
 **Database**
 
-- Confirm `DATABASE_URL` in Neon dashboard
-- Run `npm run db:push` after schema changes
+- Confirm you’re hitting the **dev** Neon project when running locally
+- Run `npm run db:push` after schema changes (applies to `DEV_DATABASE_URL` when set)
+- Cloudflare must have `DATABASE_URL` set and must **not** define `DEV_DATABASE_URL`
 
 ## More info
 
 - `WORKFLOW.md` — development and deployment flow
 - `CF_DEPLOYMENT.md` — Cloudflare deployment details
 - `README_CLOUDFLARE.md` — architecture overview
+- `.dev.vars.example` — full variable list

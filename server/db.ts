@@ -1,10 +1,12 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { neon, neonConfig } from "@neondatabase/serverless";
 import * as schema from "@shared/schema";
+import { resolveDatabaseUrl } from "@shared/database-url";
 
-if (!process.env.DATABASE_URL) {
+const databaseUrl = resolveDatabaseUrl(process.env);
+if (!databaseUrl) {
   throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
+    "DATABASE_URL (or DEV_DATABASE_URL for local) must be set. Did you forget to provision a database?",
   );
 }
 
@@ -20,14 +22,14 @@ let db: ReturnType<typeof drizzle>;
 if (useNeon) {
   // Cloudflare Workers/Pages Functions environment - use Neon serverless
   neonConfig.fetchConnectionCache = true;
-  const sql = neon(process.env.DATABASE_URL);
+  const sql = neon(databaseUrl);
   db = drizzle({ client: sql, schema });
 } else {
   // Node.js environment (Express dev, etc.) - use Pool
   // Lazy import to avoid bundling pg in Cloudflare
   const pgModule = require("pg");
   const { Pool } = pgModule;
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new Pool({ connectionString: databaseUrl });
   db = drizzle({ client: pool, schema });
 }
 

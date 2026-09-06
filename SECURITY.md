@@ -4,7 +4,7 @@
 
 - `.dev.vars` (local Wrangler secrets)
 - `.env` and `.env.*` (except `.env.example`)
-- Real `DATABASE_URL` connection strings (Neon username/password)
+- Real `DATABASE_URL` / `DEV_DATABASE_URL` connection strings (Neon username/password)
 - API keys (OpenAI, Twilio, etc.)
 - Private keys (`.pem`, `.key`)
 
@@ -14,29 +14,35 @@ These paths are in `.gitignore`. Pre-commit and CI scans add a second layer.
 
 Treat any secret that might have been shared or committed as compromised, even if git history only shows placeholders today.
 
-### 1. Neon `DATABASE_URL`
+### 1. Neon database URLs
+
+You typically have two Neon databases (or branches): **dev/testing** and **production**.
 
 1. Open [Neon Console](https://console.neon.tech) → your project → **Connection details**.
 2. **Reset password** for the database role (or create a new role and retire the old one).
-3. Copy the new connection string.
+3. Copy the new connection string(s).
 
 ### 2. Update local dev
 
 ```bash
 # Edit .dev.vars (never commit this file)
-DATABASE_URL=postgresql://NEW_USER:NEW_PASSWORD@....neon.tech/...?sslmode=require
+DEV_DATABASE_URL=postgresql://NEW_USER:NEW_PASSWORD@dev-host.neon.tech/...?sslmode=require
+DATABASE_URL=postgresql://NEW_USER:NEW_PASSWORD@prod-host.neon.tech/...?sslmode=require
 ```
 
+Local Wrangler and `db:push` prefer `DEV_DATABASE_URL` when set.  
 For Express-only local dev, also update `.env` if you use it.
 
 ### 3. Update Cloudflare Pages (production)
 
 ```bash
 npx wrangler pages secret put DATABASE_URL
-# paste the new connection string when prompted
+# paste the *production* connection string when prompted
 ```
 
 Or: Cloudflare Dashboard → Pages → your project → **Settings** → **Environment variables** → edit `DATABASE_URL` (encrypted).
+
+Do **not** set `DEV_DATABASE_URL` in Cloudflare. If only `DATABASE_URL` is present, production uses that value.
 
 ### 4. Redeploy
 

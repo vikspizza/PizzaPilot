@@ -68,17 +68,23 @@ PizzaPilot/
 ## 📝 Environment Variables
 
 Set in Cloudflare Pages dashboard:
-- `DATABASE_URL`: Your Neon database connection string (as a Secret)
+- `DATABASE_URL`: Production Neon database connection string (as a Secret)
+- Do **not** set `DEV_DATABASE_URL` in Cloudflare
 
 ## 🧪 Local Testing
 
 ```bash
 # Create .dev.vars for local testing
-echo "DATABASE_URL=your-neon-connection-string" > .dev.vars
+cp .dev.vars.example .dev.vars
+# Set DEV_DATABASE_URL (local/testing DB) and DATABASE_URL (prod reference)
 
 # Run local Cloudflare Pages dev server
+npm run build:cf
 wrangler pages dev dist/public --compatibility-date=2024-01-01
+# Or: npm run dev:cf
 ```
+
+Local Wrangler prefers `DEV_DATABASE_URL` when set; Cloudflare uses only `DATABASE_URL`.
 
 ## ⚠️ Important Notes
 
@@ -94,8 +100,9 @@ See `CF_DEPLOYMENT.md` for detailed deployment instructions and troubleshooting.
 ## 🎉 You're Ready!
 
 Your app is now configured for Cloudflare Pages. Just:
-1. Set your `DATABASE_URL` in Cloudflare Pages
-2. Deploy!
-3. Enjoy serverless pizza 🍕
+1. Set your production `DATABASE_URL` in Cloudflare Pages (Secret)
+2. Use `DEV_DATABASE_URL` in `.dev.vars` for local testing
+3. Deploy!
+4. Enjoy serverless pizza 🍕
 
 

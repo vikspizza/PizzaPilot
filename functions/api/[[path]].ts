@@ -20,6 +20,7 @@ import {
   verifyAdminPassword,
   verifyAdminToken,
 } from "../../shared/admin-auth";
+import { resolveDatabaseUrl } from "../../shared/database-url";
 import { requiresAdminAuth } from "../../shared/requires-admin-auth";
 
 // Helper to create JSON response
@@ -60,8 +61,8 @@ export async function onRequest(context: any) {
   const url = new URL(request.url);
   const path = url.pathname;
   
-  // Get DATABASE_URL from env binding (Cloudflare Pages Functions)
-  const databaseUrl = env.DATABASE_URL;
+  // Local (.dev.vars): prefer DEV_DATABASE_URL. Cloudflare: DATABASE_URL secret only.
+  const databaseUrl = resolveDatabaseUrl(env);
   if (!databaseUrl) {
     return jsonResponse({ error: "DATABASE_URL not configured" }, 500);
   }

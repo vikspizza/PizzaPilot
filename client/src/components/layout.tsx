@@ -61,7 +61,7 @@ export function Layout({
 
   return (
     <div className="min-h-screen flex flex-col bg-background font-sans selection:bg-primary/10">
-      <header className={`border-b border-border/40 sticky top-0 z-50 ${theme === "dark" ? "bg-background" : "bg-background/80 backdrop-blur-sm"}`}>
+      <header className="border-b border-border/40 bg-background">
         <div className="w-full">
           <a href="/" className="block bg-transparent" onClick={blockIfNeedsProfile}>
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-2 group cursor-pointer">

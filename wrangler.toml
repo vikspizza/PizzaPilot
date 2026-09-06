@@ -28,5 +28,5 @@ class_name = "TryPieHoldCoordinator"
 script_name = "pizzapilot-try-pie-holds"
 
 # Secrets (DATABASE_URL, etc.) are NOT stored in this file.
-# Local:  .dev.vars (gitignored)
-# Cloudflare: wrangler pages secret put DATABASE_URL
+# Local:  .dev.vars — set DEV_DATABASE_URL for local DB (preferred) and DATABASE_URL for prod reference
+# Cloudflare: wrangler pages secret put DATABASE_URL  (do NOT set DEV_DATABASE_URL in CF)

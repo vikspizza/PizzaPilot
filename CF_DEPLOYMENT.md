@@ -69,7 +69,7 @@ wrangler pages deploy dist/public --project-name=pizzapilot
 2. Navigate to **Settings** > **Environment variables**
 3. Add the following:
    - **Variable name**: `DATABASE_URL`
-   - **Value**: Your Neon connection string
+   - **Value**: Your **production** Neon connection string
    - **Environment**: Select both "Production" and "Preview"
 
 **Important**: For security, use **Secrets** instead of plain environment variables:
@@ -78,6 +78,7 @@ wrangler pages deploy dist/public --project-name=pizzapilot
 3. Select "Encrypt" to make it a secret
 4. Add `DATABASE_URL` as an encrypted secret
 
+Do **not** set `DEV_DATABASE_URL` in Cloudflare. That variable is only for local `.dev.vars`; if Cloudflare only has `DATABASE_URL`, production uses it automatically.
 ## Step 5: Verify Deployment
 
 1. After deployment completes, visit your Pages URL
@@ -114,12 +115,17 @@ To test locally with Wrangler:
 npm install -g wrangler
 
 # Create .dev.vars file (for local development)
-echo "DATABASE_URL=your-neon-connection-string" > .dev.vars
+# Prefer DEV_DATABASE_URL for local; DATABASE_URL is the prod URL (CF secret).
+cp .dev.vars.example .dev.vars
+# Edit .dev.vars with your Neon URLs
 
 # Run local development server
+npm run build:cf
 wrangler pages dev dist/public --compatibility-date=2024-01-01
+# Or: npm run dev:cf
 ```
 
+Local code prefers `DEV_DATABASE_URL` when set. Cloudflare production should only have the `DATABASE_URL` secret.
 ## Static Assets
 
 The `attached_assets` folder (pizza images) is automatically copied to `dist/public/attached_assets` during build.

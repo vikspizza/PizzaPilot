@@ -6,14 +6,15 @@ Recommended local workflow — matches Cloudflare Pages production:
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # set DATABASE_URL to your Neon connection string
-export DATABASE_URL="your-neon-connection-string"
-npm run db:push
+cp .dev.vars.example .dev.vars   # set DEV_DATABASE_URL (local) and DATABASE_URL (prod reference)
+npm run db:push                  # prefers DEV_DATABASE_URL from .dev.vars
 npm run seed                     # optional
 npm run dev:cf
 ```
 
 Open the URL Wrangler prints (often `http://localhost:8788`).
+
+Local Wrangler prefers `DEV_DATABASE_URL` when set. Cloudflare Pages should only define the `DATABASE_URL` secret (production).
 
 See `QUICK_START.md` for a shorter guide and `CF_DEPLOYMENT.md` for deploy details.
 
@@ -156,7 +157,7 @@ With `npm run dev:cf` (Wrangler) or `npm run dev` (Express), use your local base
 - Make sure all dependencies are installed: `npm install`
 
 **Wrangler / Cloudflare:**
-- Confirm `.dev.vars` has `DATABASE_URL`
+- Confirm `.dev.vars` has `DEV_DATABASE_URL` (local) and/or `DATABASE_URL`
 - Clear cache: `rm -rf .wrangler` then `npm run dev:cf`
 
 ## Notes
@@ -195,7 +196,7 @@ This app is configured to deploy on Cloudflare Pages with Pages Functions.
    ```bash
    # Create .dev.vars file
    cp .dev.vars.example .dev.vars
-   # Edit .dev.vars with your Neon DATABASE_URL
+   # Edit .dev.vars — set DEV_DATABASE_URL for local, DATABASE_URL for prod reference
    
    # Build and test
    npm run build:cf
@@ -206,6 +207,8 @@ This app is configured to deploy on Cloudflare Pages with Pages Functions.
 3. **Deploy to Cloudflare Pages**:
    - Connect your Git repo in Cloudflare Dashboard > Pages
    - Build command: `npm run build:cf`
+   - Set `DATABASE_URL` as an encrypted Secret (production Neon URL only)
+   - Do **not** set `DEV_DATABASE_URL` in Cloudflare
    - Output directory: `dist/public`
    - Add `DATABASE_URL` as an encrypted Secret
 
