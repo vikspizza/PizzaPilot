@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS "batches" (
 	"slot_list_id" varchar,
 	"service_start_hour" integer DEFAULT 16 NOT NULL,
 	"service_end_hour" integer DEFAULT 20 NOT NULL,
+	"activated_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 

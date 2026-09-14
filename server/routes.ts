@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertPizzaSchema, insertOrderSchema, submitReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema, insertSlotListSchema, insertPickupSlotSchema, createOrderRequestSchema } from "@shared/schema";
 import { createOrderFromRequest } from "./order-create";
+import { createAdminOrder, createAdminOrderRequestSchema } from "./admin-order-create";
 import { z } from "zod";
 import { sendSms } from "./sms";
 import { getTryPieContext, getTryPieContextForBatch } from "./try-pie-context";
@@ -12,6 +13,7 @@ import { normalizeInviteCode } from "./try-pie-invite-storage";
 import { createReviewFromLink, getReviewLinkContext } from "./review-from-link";
 import { resolveReviewLinkSecret } from "@shared/review-link";
 import { normalizePickupTime } from "@shared/pickup-time";
+import { assertSignupAllowed } from "./signup-throttle";
 import {
   createAdminToken,
   getBearerToken,
@@ -205,6 +207,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(201).json(result.order);
     } catch (error) {
       console.error("Error creating order:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create order" });
+    }
+  });
+
+  app.post("/api/orders/admin", async (req, res) => {
+    try {
+      const body = createAdminOrderRequestSchema.parse(req.body);
+      const requestOrigin = `${req.protocol}://${req.get("host") ?? "localhost"}`;
+      const siteUrl = process.env.SITE_URL || requestOrigin;
+
+      const result = await createAdminOrder(storage, body, {
+        resendApiKey: process.env.RESEND_API_KEY,
+        emailFrom: process.env.EMAIL_FROM,
+        siteUrl,
+        logoBaseUrl: requestOrigin,
+        reviewLinkSecret: resolveReviewLinkSecret(
+          process.env.REVIEW_LINK_SECRET,
+          process.env.ADMIN_PASSWORD,
+        ),
+      });
+
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
+      }
+
+      res.status(201).json({
+        ...result.order,
+        emailSent: result.emailSent,
+      });
+    } catch (error) {
+      console.error("Error creating admin order:", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
@@ -770,6 +806,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const inviteCode = req.body?.inviteCode
         ? normalizeInviteCode(String(req.body.inviteCode))
         : undefined;
+      const phone = req.body?.phone ? String(req.body.phone) : undefined;
       if (!batchId || !pizzaId || !date || !slotId) {
         return res.status(400).json({ error: "batchId, pizzaId, date, and slotId are required" });
       }
@@ -781,10 +818,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         date,
         slotId,
         undefined,
-        inviteCode ? { inviteCode } : undefined,
+        {
+          ...(inviteCode ? { inviteCode } : {}),
+          ...(phone ? { phone } : {}),
+        },
       );
       if (!result.ok) {
-        return res.status(result.status).json({ error: result.error });
+        return res.status(result.status).json({
+          error: result.error,
+          code: result.retryAfterSeconds ? "priority_window" : undefined,
+          retryAfterSeconds: result.retryAfterSeconds,
+        });
       }
 
       res.status(201).json({
@@ -832,6 +876,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error creating try-pie invite:", error);
       res.status(500).json({ error: "Failed to create invite code" });
+    }
+  });
+
+  app.post("/api/batches/:id/activate", async (req, res) => {
+    try {
+      const updated = await storage.activateBatch(req.params.id);
+      if (!updated) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error activating batch:", error);
+      res.status(500).json({ error: "Failed to activate batch" });
+    }
+  });
+
+  app.post("/api/try-pie/eligibility", async (req, res) => {
+    try {
+      const phone = String(req.body?.phone ?? "");
+      const batchId = String(req.body?.batchId ?? "");
+      if (!batchId) {
+        return res.status(400).json({ error: "batchId is required" });
+      }
+      const batch = await storage.getBatchById(batchId);
+      if (!batch) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
+      const inviteCode = req.body?.inviteCode
+        ? normalizeInviteCode(String(req.body.inviteCode))
+        : undefined;
+      const result = await assertSignupAllowed(storage, batch, phone, { inviteCode });
+      if (!result.ok) {
+        return res.status(result.status).json({
+          allowed: false,
+          error: result.error,
+          code: result.code,
+          retryAfterSeconds: result.retryAfterSeconds ?? 0,
+        });
+      }
+      res.json({ allowed: true });
+    } catch (error) {
+      console.error("Error checking try-pie eligibility:", error);
+      res.status(500).json({ error: "Failed to check eligibility" });
     }
   });
 

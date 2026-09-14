@@ -6,10 +6,11 @@ import {
 } from "./try-pie-hold-store";
 import { isSlotHoldActive } from "./try-pie-hold-cache";
 import { validateUnusedTryPieInvite } from "./try-pie-invite";
+import { assertSignupAllowed } from "./signup-throttle";
 
 export type CreateTryPieHoldResult =
   | { ok: true; holdId: string; expiresAt: string; expiresInSeconds: number }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string; retryAfterSeconds?: number };
 
 function storeOrDefault(holdStore?: HoldStore): HoldStore {
   return holdStore ?? resolveHoldStore();
@@ -22,7 +23,7 @@ export async function createTryPieHold(
   date: string,
   slotId: string,
   holdStore?: HoldStore,
-  options?: { inviteCode?: string },
+  options?: { inviteCode?: string; phone?: string },
 ): Promise<CreateTryPieHoldResult> {
   const store = storeOrDefault(holdStore);
 
@@ -36,6 +37,18 @@ export async function createTryPieHold(
   }
   if (batch.serviceDate !== date) {
     return { ok: false, status: 400, error: "Order date does not match batch service date." };
+  }
+
+  const throttle = await assertSignupAllowed(storage, batch, options?.phone, {
+    inviteCode: options?.inviteCode,
+  });
+  if (!throttle.ok) {
+    return {
+      ok: false,
+      status: throttle.status,
+      error: throttle.error,
+      retryAfterSeconds: throttle.retryAfterSeconds,
+    };
   }
 
   const orderBookedSlotIds = await storage.getBookedSlotIds(batchId, date);

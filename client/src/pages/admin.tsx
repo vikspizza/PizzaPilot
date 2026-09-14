@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -101,6 +102,7 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
   const { toast } = useToast();
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [isManualOrderOpen, setIsManualOrderOpen] = useState(false);
 
   const { data: orders, isLoading: ordersLoading, error: ordersError } = useQuery({
     queryKey: ["orders"],
@@ -271,7 +273,13 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
           <TabsContent value="orders">
             <Card>
               <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between space-y-0">
-                <CardTitle>Orders</CardTitle>
+                <div className="flex flex-wrap items-center gap-3">
+                  <CardTitle>Orders</CardTitle>
+                  <Button size="sm" onClick={() => setIsManualOrderOpen(true)}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add order
+                  </Button>
+                </div>
                 <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end lg:w-auto">
                   <div className="flex w-full flex-col gap-2 sm:min-w-[18rem]">
                     <Label htmlFor="orders-batch-filter" className="text-sm text-muted-foreground">
@@ -428,6 +436,13 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
                 )}
               </CardContent>
             </Card>
+            <ManualOrderDialog
+              isOpen={isManualOrderOpen}
+              onClose={() => setIsManualOrderOpen(false)}
+              batches={batches || []}
+              defaultBatchId={selectedBatchId}
+              onSessionExpired={onSessionExpired}
+            />
           </TabsContent>
 
           <TabsContent value="menu">
@@ -528,6 +543,279 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
   );
 }
 
+function ManualOrderDialog({
+  isOpen,
+  onClose,
+  batches,
+  defaultBatchId,
+  onSessionExpired,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  batches: Batch[];
+  defaultBatchId: string;
+  onSessionExpired: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const sortedBatches = useMemo(
+    () => [...batches].sort((a, b) => b.batchNumber - a.batchNumber),
+    [batches],
+  );
+
+  const [batchId, setBatchId] = useState("");
+  const [pizzaId, setPizzaId] = useState("");
+  const [slotId, setSlotId] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [sendConfirmationEmail, setSendConfirmationEmail] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const initial =
+      (defaultBatchId && sortedBatches.some((b) => b.id === defaultBatchId)
+        ? defaultBatchId
+        : sortedBatches[0]?.id) || "";
+    setBatchId(initial);
+    setPizzaId("");
+    setSlotId("");
+    setName("");
+    setPhone("");
+    setEmail("");
+    setSendConfirmationEmail(false);
+  }, [isOpen, defaultBatchId, sortedBatches]);
+
+  const selectedBatch = sortedBatches.find((batch) => batch.id === batchId);
+
+  const { data: batchPizzas, isLoading: batchPizzasLoading } = useQuery({
+    queryKey: ["batchPizzas", batchId],
+    queryFn: () => api.getBatchPizzas(batchId),
+    enabled: isOpen && Boolean(batchId),
+  });
+
+  const { data: slots, isLoading: slotsLoading } = useQuery({
+    queryKey: ["pickup-slots", selectedBatch?.slotListId],
+    queryFn: () => api.getPickupSlots(selectedBatch!.slotListId!),
+    enabled: isOpen && Boolean(selectedBatch?.slotListId),
+  });
+
+  const sortedSlots = useMemo(
+    () => [...(slots ?? [])].sort((a, b) => comparePickupTime(a.pickupTime, b.pickupTime)),
+    [slots],
+  );
+
+  useEffect(() => {
+    if (!batchPizzas?.length) {
+      setPizzaId("");
+      return;
+    }
+    setPizzaId((current) =>
+      batchPizzas.some((entry) => entry.pizzaId === current)
+        ? current
+        : batchPizzas[0].pizzaId,
+    );
+  }, [batchPizzas]);
+
+  useEffect(() => {
+    setSlotId("");
+  }, [batchId]);
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      api.createAdminOrder({
+        batchId,
+        pizzaId,
+        slotId,
+        customerName: name.trim(),
+        customerPhone: phone.replace(/\D/g, ""),
+        customerEmail: email.trim() || undefined,
+        sendConfirmationEmail,
+      }),
+    onSuccess: (order) => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      toast({
+        title: "Order added",
+        description: order.emailSent
+          ? "Order created and confirmation email sent."
+          : sendConfirmationEmail
+            ? "Order created, but the confirmation email did not send."
+            : "Order created without email.",
+      });
+      onClose();
+    },
+    onError: (error: Error) => {
+      if (error.message.includes("session expired")) {
+        onSessionExpired();
+        return;
+      }
+      toast({
+        title: "Could not add order",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const phoneDigits = phone.replace(/\D/g, "");
+  const canSubmit =
+    Boolean(batchId && pizzaId && slotId && name.trim().length >= 2 && phoneDigits.length === 10) &&
+    (!sendConfirmationEmail || Boolean(email.trim()));
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Add order</DialogTitle>
+          <DialogDescription>
+            Create an order for someone who didn't go through Try a Pie. Slot double-booking is allowed.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!canSubmit || createMutation.isPending) {
+              return;
+            }
+            createMutation.mutate();
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="manual-order-batch">Batch</Label>
+            <Select value={batchId || undefined} onValueChange={setBatchId}>
+              <SelectTrigger id="manual-order-batch">
+                <SelectValue placeholder="Select batch" />
+              </SelectTrigger>
+              <SelectContent>
+                {sortedBatches.map((batch) => (
+                  <SelectItem key={batch.id} value={batch.id}>
+                    {formatBatchOptionLabel(batch)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="manual-order-pizza">Pizza</Label>
+            {batchPizzasLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : !batchPizzas?.length ? (
+              <p className="text-sm text-muted-foreground">This batch has no pizzas.</p>
+            ) : (
+              <Select value={pizzaId || undefined} onValueChange={setPizzaId}>
+                <SelectTrigger id="manual-order-pizza">
+                  <SelectValue placeholder="Select pizza" />
+                </SelectTrigger>
+                <SelectContent>
+                  {batchPizzas.map((entry) => (
+                    <SelectItem key={entry.pizzaId} value={entry.pizzaId}>
+                      {entry.pizza?.name ?? entry.pizzaId}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="manual-order-slot">Pickup slot</Label>
+            {!selectedBatch?.slotListId ? (
+              <p className="text-sm text-muted-foreground">This batch has no slot list.</p>
+            ) : slotsLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : !sortedSlots.length ? (
+              <p className="text-sm text-muted-foreground">No pickup slots on this list.</p>
+            ) : (
+              <Select value={slotId || undefined} onValueChange={setSlotId}>
+                <SelectTrigger id="manual-order-slot">
+                  <SelectValue placeholder="Select pickup time" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedSlots.map((slot) => (
+                    <SelectItem key={slot.slotId} value={slot.slotId}>
+                      {formatPickupTime(slot.pickupTime)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="manual-order-name">Name</Label>
+            <Input
+              id="manual-order-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="name"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="manual-order-phone">Phone</Label>
+            <Input
+              id="manual-order-phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              inputMode="numeric"
+              autoComplete="tel"
+              placeholder="10-digit number"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="manual-order-email">
+              Email{sendConfirmationEmail ? "" : " (optional)"}
+            </Label>
+            <Input
+              id="manual-order-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required={sendConfirmationEmail}
+            />
+          </div>
+
+          <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
+            <Checkbox
+              checked={sendConfirmationEmail}
+              onCheckedChange={(checked) => setSendConfirmationEmail(checked === true)}
+            />
+            <span className="min-w-0">
+              <span className="block font-medium">Send confirmation email</span>
+              <span className="block text-sm text-muted-foreground">
+                Includes a review link they can use to leave feedback.
+              </span>
+            </span>
+          </label>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canSubmit || createMutation.isPending}>
+              {createMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4 mr-2" />
+              )}
+              Add order
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const BATCHES_PER_PAGE = 10;
 
 function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
@@ -598,6 +886,24 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to delete batch",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const activateBatchMutation = useMutation({
+    mutationFn: api.activateBatch,
+    onSuccess: (batch) => {
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      toast({
+        title: "Batch activated",
+        description: `Batch #${batch.batchNumber} is now open for signups. Priority window runs for 30 minutes.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to activate batch",
         variant: "destructive",
       });
     },
@@ -708,6 +1014,13 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
                         <Clock className="w-4 h-4" />
                         {batch.serviceStartHour}:00 - {batch.serviceEndHour}:00
                       </span>
+                      {batch.activatedAt ? (
+                        <Badge variant="default">
+                          Activated {format(new Date(batch.activatedAt), "MMM d, h:mm a")}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Not activated</Badge>
+                      )}
                     </CardDescription>
                     <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 max-w-sm">
                       <Label
@@ -756,6 +1069,22 @@ function BatchManagement({ pizzas }: { pizzas: Pizza[] }) {
                       onClick={() => setSelectedBatch(selectedBatch?.id === batch.id ? null : batch)}
                     >
                       {selectedBatch?.id === batch.id ? "Hide" : "Manage"}
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      disabled={Boolean(batch.activatedAt) || activateBatchMutation.isPending}
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Activate Batch #${batch.batchNumber}? It will appear on the homepage and the 30-minute priority window for less-frequent customers starts now.`,
+                          )
+                        ) {
+                          activateBatchMutation.mutate(batch.id);
+                        }
+                      }}
+                    >
+                      {batch.activatedAt ? "Activated" : "Activate"}
                     </Button>
                     <Button
                       variant="outline"
@@ -1202,7 +1531,7 @@ function CreateBatchDialog({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (batch: Omit<Batch, "id" | "createdAt">) => void;
+  onCreate: (batch: Omit<Batch, "id" | "createdAt" | "activatedAt">) => void;
   isLoading: boolean;
   slotLists: SlotList[];
 }) {
@@ -1318,7 +1647,7 @@ function EditBatchDialog({
 }: {
   batch: Batch;
   onClose: () => void;
-  onUpdate: (updates: Partial<Omit<Batch, "id" | "createdAt">>) => void;
+  onUpdate: (updates: Partial<Omit<Batch, "id" | "createdAt" | "activatedAt">>) => void;
   isLoading: boolean;
   slotLists: SlotList[];
 }) {

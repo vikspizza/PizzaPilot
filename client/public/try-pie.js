@@ -13,6 +13,14 @@
   let holdEndsAtMs = null;
   let holdInFlight = false;
   let isPopulatingSlots = false;
+  /** @type {string | null} */
+  let throttleMessage = null;
+  /** @type {number | null} */
+  let throttleEndsAtMs = null;
+  /** @type {ReturnType<typeof setInterval> | null} */
+  let throttleTimerId = null;
+  /** @type {string | null} */
+  let lastEligibilityPhone = null;
 
   const HOLD_TIMEOUT_MESSAGE =
     "Your reservation timed out. Please select a pickup time again.";
@@ -66,6 +74,95 @@
     !inviteErrorEl
   ) {
     return;
+  }
+
+  function clearThrottleState() {
+    if (throttleTimerId) {
+      clearInterval(throttleTimerId);
+      throttleTimerId = null;
+    }
+    throttleMessage = null;
+    throttleEndsAtMs = null;
+    lastEligibilityPhone = null;
+  }
+
+  function formatThrottleMessage(endsAtMs) {
+    const secondsLeft = Math.max(0, Math.ceil((endsAtMs - Date.now()) / 1000));
+    const mins = Math.max(1, Math.ceil(secondsLeft / 60));
+    return `Please try again in ${mins} minute${mins === 1 ? "" : "s"}. We're giving first dibs to folks who haven't ordered as often.`;
+  }
+
+  function startThrottleCountdown(endsAtMs, fallbackMessage) {
+    if (throttleTimerId) {
+      clearInterval(throttleTimerId);
+      throttleTimerId = null;
+    }
+    throttleEndsAtMs = endsAtMs;
+    const tick = () => {
+      if (!throttleEndsAtMs || throttleEndsAtMs <= Date.now()) {
+        clearThrottleState();
+        setError("");
+        updateSubmitState();
+        return;
+      }
+      throttleMessage = formatThrottleMessage(throttleEndsAtMs);
+      setError(throttleMessage);
+    };
+    throttleMessage = fallbackMessage || formatThrottleMessage(endsAtMs);
+    setError(throttleMessage);
+    throttleTimerId = setInterval(tick, 15000);
+  }
+
+  /**
+   * @returns {Promise<boolean>} true if signup is allowed for this phone
+   */
+  async function checkEligibility() {
+    const phone = normalizePhone(/** @type {HTMLInputElement} */ (phoneInput).value);
+    if (!context?.batch?.id || phone.length !== 10) {
+      clearThrottleState();
+      return true;
+    }
+    if (inviteCode) {
+      clearThrottleState();
+      return true;
+    }
+    if (lastEligibilityPhone === phone && throttleMessage) {
+      return false;
+    }
+    if (lastEligibilityPhone === phone && !throttleMessage) {
+      return true;
+    }
+
+    lastEligibilityPhone = phone;
+    try {
+      const res = await fetch("/api/try-pie/eligibility", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          batchId: context.batch.id,
+          ...(inviteCode ? { inviteCode } : {}),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.allowed === false) {
+        const endsAt =
+          context.batch.priorityWindowEndsAt
+            ? Date.parse(context.batch.priorityWindowEndsAt)
+            : Date.now() + (Number(data.retryAfterSeconds) || 0) * 1000;
+        startThrottleCountdown(
+          endsAt,
+          typeof data.error === "string" ? data.error : undefined,
+        );
+        return false;
+      }
+      clearThrottleState();
+      setError("");
+      return true;
+    } catch {
+      // Don't block on network blip; server still enforces on hold/order.
+      return true;
+    }
   }
 
   function formatBatchDate(dateStr) {
@@ -242,6 +339,9 @@
   function validateForm() {
     if (holdInFlight) {
       return "Reserving pickup time…";
+    }
+    if (throttleMessage) {
+      return throttleMessage;
     }
 
     const name = /** @type {HTMLInputElement} */ (nameInput).value.trim();
@@ -422,6 +522,12 @@
       return false;
     }
 
+    const phone = normalizePhone(/** @type {HTMLInputElement} */ (phoneInput).value);
+    const allowed = await checkEligibility();
+    if (!allowed) {
+      return false;
+    }
+
     const res = await fetch("/api/try-pie/hold", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -430,17 +536,29 @@
         pizzaId: context.pizzaId,
         date: context.date,
         slotId,
+        ...(phone ? { phone } : {}),
         ...(inviteCode ? { inviteCode } : {}),
       }),
     });
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setError(
-        typeof data.error === "string"
-          ? data.error
-          : "That pickup time is no longer available. Please choose another slot.",
-      );
+      if (data.code === "priority_window" || Number(data.retryAfterSeconds) > 0) {
+        const endsAt =
+          context.batch.priorityWindowEndsAt
+            ? Date.parse(context.batch.priorityWindowEndsAt)
+            : Date.now() + (Number(data.retryAfterSeconds) || 0) * 1000;
+        startThrottleCountdown(
+          endsAt,
+          typeof data.error === "string" ? data.error : undefined,
+        );
+      } else {
+        setError(
+          typeof data.error === "string"
+            ? data.error
+            : "That pickup time is no longer available. Please choose another slot.",
+        );
+      }
       return false;
     }
 
@@ -463,6 +581,14 @@
     timerEl.textContent = "";
 
     if (!intendedSlotId) {
+      updateSubmitState();
+      return;
+    }
+
+    const phone = normalizePhone(/** @type {HTMLInputElement} */ (phoneInput).value);
+    if (phone.length !== 10 && !inviteCode) {
+      setError("Enter your phone number before selecting a pickup time.");
+      /** @type {HTMLSelectElement} */ (slotSelect).value = "";
       updateSubmitState();
       return;
     }
@@ -506,7 +632,7 @@
     modal.hidden = false;
     document.body.classList.add("try-pie-modal-open");
     setError("");
-    /** @type {HTMLInputElement} */ (nameInput).focus();
+    /** @type {HTMLInputElement} */ (phoneInput).focus();
   }
 
   async function closeModal() {
@@ -543,7 +669,18 @@
     const input = /** @type {HTMLInputElement} */ (event.target);
     const digits = normalizePhone(input.value);
     input.value = digits;
+    if (digits.length < 10) {
+      const wasThrottled = Boolean(throttleMessage);
+      clearThrottleState();
+      lastEligibilityPhone = null;
+      if (wasThrottled) {
+        setError("");
+      }
+    }
     updateSubmitState();
+    if (digits.length === 10) {
+      void checkEligibility().then(() => updateSubmitState());
+    }
   });
 
   for (const el of [nameInput, emailInput]) {

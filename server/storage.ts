@@ -49,6 +49,7 @@ import {
   selectTryPieInvitesByBatchId,
   unclaimTryPieInvite as unclaimTryPieInviteRecord,
 } from "./try-pie-invite-storage";
+import { isFrequentCustomer as isFrequentCustomerRecord } from "./frequent-customer";
 import {
   insertReviewAnswers,
   selectActiveReviewQuestions,
@@ -113,6 +114,7 @@ export interface IStorage {
   getBatchByDate(date: string): Promise<Batch | undefined>;
   createBatch(batch: InsertBatch): Promise<Batch>;
   updateBatch(id: string, batch: Partial<InsertBatch>): Promise<Batch | undefined>;
+  activateBatch(id: string): Promise<Batch | undefined>;
   deleteBatch(id: string): Promise<void>;
 
   // Batch Pizzas
@@ -149,6 +151,9 @@ export interface IStorage {
   getTryPieInviteByCode(code: string): Promise<TryPieInvite | undefined>;
   claimTryPieInvite(code: string, batchId: string): Promise<TryPieInvite | undefined>;
   unclaimTryPieInvite(code: string): Promise<void>;
+
+  /** ≥3 non-cancelled orders in the last 6 batches. */
+  isFrequentCustomer(phone10: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -404,6 +409,22 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async activateBatch(id: string): Promise<Batch | undefined> {
+    const existing = await this.getBatchById(id);
+    if (!existing) {
+      return undefined;
+    }
+    if (existing.activatedAt) {
+      return existing;
+    }
+    const [updated] = await db
+      .update(schema.batches)
+      .set({ activatedAt: new Date() })
+      .where(eq(schema.batches.id, id))
+      .returning();
+    return updated;
+  }
+
   async deleteBatch(id: string): Promise<void> {
     await db.delete(schema.batches).where(eq(schema.batches.id, id));
   }
@@ -608,6 +629,10 @@ export class DatabaseStorage implements IStorage {
 
   async unclaimTryPieInvite(code: string): Promise<void> {
     await unclaimTryPieInviteRecord(db, code);
+  }
+
+  async isFrequentCustomer(phone10: string): Promise<boolean> {
+    return isFrequentCustomerRecord(db, phone10);
   }
 }
 

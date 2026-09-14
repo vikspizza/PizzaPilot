@@ -75,6 +75,7 @@ export interface Batch {
   slotListId?: string | null;
   serviceStartHour: number;
   serviceEndHour: number;
+  activatedAt: string | null;
   createdAt: string;
 }
 
@@ -359,6 +360,34 @@ export const api = {
     return res.json();
   },
 
+  createAdminOrder: async (payload: {
+    batchId: string;
+    pizzaId: string;
+    slotId: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail?: string;
+    sendConfirmationEmail?: boolean;
+  }): Promise<Order & { emailSent?: boolean }> => {
+    const res = await fetch("/api/orders/admin", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify(payload),
+    });
+    handleAdminUnauthorized(res);
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      const message =
+        typeof error.error === "string"
+          ? error.error
+          : Array.isArray(error.error)
+            ? error.error.map((e: { message?: string }) => e.message).filter(Boolean).join(", ")
+            : "Failed to create order";
+      throw new Error(message || "Failed to create order");
+    }
+    return res.json();
+  },
+
   updateOrderStatus: async (id: string, status: string): Promise<Order> => {
     const res = await fetch(`/api/orders/${id}/status`, {
       method: "PATCH",
@@ -489,7 +518,7 @@ export const api = {
     return res.json();
   },
 
-  createBatch: async (batch: Omit<Batch, "id" | "createdAt">): Promise<Batch> => {
+  createBatch: async (batch: Omit<Batch, "id" | "createdAt" | "activatedAt">): Promise<Batch> => {
     const res = await fetch("/api/batches", {
       method: "POST",
       headers: jsonHeaders(),
@@ -503,7 +532,7 @@ export const api = {
     return res.json();
   },
 
-  updateBatch: async (id: string, batch: Partial<Omit<Batch, "id" | "createdAt">>): Promise<Batch> => {
+  updateBatch: async (id: string, batch: Partial<Omit<Batch, "id" | "createdAt" | "activatedAt">>): Promise<Batch> => {
     const res = await fetch(`/api/batches/${id}`, {
       method: "PATCH",
       headers: jsonHeaders(),
@@ -577,6 +606,19 @@ export const api = {
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
       throw new Error(error.error || "Failed to create invite code");
+    }
+    return res.json();
+  },
+
+  activateBatch: async (batchId: string): Promise<Batch> => {
+    const res = await fetch(`/api/batches/${batchId}/activate`, {
+      method: "POST",
+      headers: jsonHeaders(),
+    });
+    handleAdminUnauthorized(res);
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || "Failed to activate batch");
     }
     return res.json();
   },

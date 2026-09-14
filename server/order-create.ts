@@ -5,6 +5,7 @@ import { getHeldSlotIds, releaseTryPieHold, validateTryPieHoldForOrder } from ".
 import type { HoldStore } from "./try-pie-hold-store";
 import { validateUnusedTryPieInvite } from "./try-pie-invite";
 import { normalizeInviteCode } from "./try-pie-invite-storage";
+import { assertSignupAllowed } from "./signup-throttle";
 
 /** Temporarily disabled — set to true to require a review before the next order. */
 const REQUIRE_PREVIOUS_ORDER_REVIEW = false;
@@ -68,6 +69,20 @@ export async function createOrderFromRequest(
         ok: false,
         status: 400,
         error: "Order date does not match batch service date.",
+      };
+    }
+
+    const throttle = await assertSignupAllowed(
+      storage,
+      batch,
+      orderRequest.customerPhone,
+      { inviteCode: orderRequest.inviteCode },
+    );
+    if (!throttle.ok) {
+      return {
+        ok: false,
+        status: throttle.status,
+        error: throttle.error,
       };
     }
 

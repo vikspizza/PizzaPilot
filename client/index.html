@@ -68,16 +68,6 @@
       <p class="try-pie-timer" id="try-pie-timer" aria-live="polite"></p>
       <form id="try-pie-form" class="try-pie-form">
         <label class="try-pie-field">
-          <span class="try-pie-label">Pickup time</span>
-          <select id="try-pie-slot" name="slotId" required>
-            <option value="" disabled selected>Select pickup time</option>
-          </select>
-        </label>
-        <label class="try-pie-field">
-          <span class="try-pie-label">Name for pickup</span>
-          <input id="try-pie-name" name="name" type="text" autocomplete="name" minlength="2" required />
-        </label>
-        <label class="try-pie-field">
           <span class="try-pie-label">Phone</span>
           <input
             id="try-pie-phone"
@@ -94,6 +84,16 @@
         <label class="try-pie-field">
           <span class="try-pie-label">Email <span class="try-pie-label-hint">(for order confirmation)</span></span>
           <input id="try-pie-email" name="email" type="email" autocomplete="email" required />
+        </label>
+        <label class="try-pie-field">
+          <span class="try-pie-label">Name for pickup</span>
+          <input id="try-pie-name" name="name" type="text" autocomplete="name" minlength="2" required />
+        </label>
+        <label class="try-pie-field">
+          <span class="try-pie-label">Pickup time</span>
+          <select id="try-pie-slot" name="slotId" required>
+            <option value="" disabled selected>Select pickup time</option>
+          </select>
         </label>
         <button type="submit" class="try-pie-submit" id="try-pie-submit" disabled>Submit order</button>
         <p class="try-pie-error" id="try-pie-error" hidden></p>

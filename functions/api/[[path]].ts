@@ -4,6 +4,7 @@ import { DatabaseStorage } from "../../server/storage-cf";
 import { getDb } from "../../server/db-cf";
 import { insertPizzaSchema, insertOrderSchema, submitReviewSchema, insertSettingsSchema, insertBatchSchema, insertBatchPizzaSchema, insertSlotListSchema, insertPickupSlotSchema, createOrderRequestSchema } from "../../shared/schema";
 import { createOrderFromRequest } from "../../server/order-create";
+import { createAdminOrder, createAdminOrderRequestSchema } from "../../server/admin-order-create";
 import { z } from "zod";
 import { sendSms } from "../../server/sms";
 import { getTryPieContext, getTryPieContextForBatch } from "../../server/try-pie-context";
@@ -12,6 +13,7 @@ import { createTryPieInviteForBatch, validateUnusedTryPieInvite } from "../../se
 import { normalizeInviteCode } from "../../server/try-pie-invite-storage";
 import { createReviewFromLink, getReviewLinkContext } from "../../server/review-from-link";
 import { resolveHoldStore } from "../../server/try-pie-hold-store";
+import { assertSignupAllowed } from "../../server/signup-throttle";
 import { resolveReviewLinkSecret } from "../../shared/review-link";
 import { normalizePickupTime } from "../../shared/pickup-time";
 import {
@@ -265,6 +267,29 @@ export async function onRequest(context: any) {
       return jsonResponse(result.order, 201);
     }
 
+    if (path === "/api/orders/admin" && method === "POST") {
+      const body = createAdminOrderRequestSchema.parse(await parseBody(request));
+      const requestOrigin = new URL(request.url).origin;
+      const siteUrl = env.SITE_URL || requestOrigin;
+
+      const result = await createAdminOrder(storage, body, {
+        resendApiKey: env.RESEND_API_KEY,
+        emailFrom: env.EMAIL_FROM,
+        siteUrl,
+        logoBaseUrl: requestOrigin,
+        reviewLinkSecret: resolveReviewLinkSecret(
+          env.REVIEW_LINK_SECRET,
+          env.ADMIN_PASSWORD,
+        ),
+      });
+
+      if (!result.ok) {
+        return jsonResponse({ error: result.error }, result.status);
+      }
+
+      return jsonResponse({ ...result.order, emailSent: result.emailSent }, 201);
+    }
+
     if (method === "GET" && /^\/api\/orders\/[^/]+$/.test(path)) {
       const orderId = getOrderIdFromPath(path);
       if (!orderId) {
@@ -506,8 +531,8 @@ export async function onRequest(context: any) {
       return jsonResponse(batch);
     }
 
-    if (path.startsWith("/api/batches/") && !path.includes("/pizzas") && !path.includes("/availability") && method === "GET") {
-      // Extract batch ID from path: /api/batches/{batchId}
+    if (/^\/api\/batches\/[^/]+$/.test(path) && method === "GET") {
+      // Exact path: /api/batches/{batchId}
       const pathSegments = path.split("/").filter(Boolean);
       const batchId = pathSegments[pathSegments.indexOf("batches") + 1];
       const batch = await storage.getBatchById(batchId);
@@ -524,8 +549,8 @@ export async function onRequest(context: any) {
       return jsonResponse(newBatch, 201);
     }
 
-    if (path.startsWith("/api/batches/") && !path.includes("/pizzas") && method === "PATCH") {
-      // Extract batch ID from path: /api/batches/{batchId}
+    if (/^\/api\/batches\/[^/]+$/.test(path) && method === "PATCH") {
+      // Exact path: /api/batches/{batchId}
       const pathSegments = path.split("/").filter(Boolean);
       const batchId = pathSegments[pathSegments.indexOf("batches") + 1];
       const body = await parseBody(request);
@@ -537,8 +562,8 @@ export async function onRequest(context: any) {
       return jsonResponse(updated);
     }
 
-    if (path.startsWith("/api/batches/") && !path.includes("/pizzas") && method === "DELETE") {
-      // Extract batch ID from path: /api/batches/{batchId}
+    if (/^\/api\/batches\/[^/]+$/.test(path) && method === "DELETE") {
+      // Exact path: /api/batches/{batchId}
       const pathSegments = path.split("/").filter(Boolean);
       const batchId = pathSegments[pathSegments.indexOf("batches") + 1];
       await storage.deleteBatchPizzasByBatchId(batchId);
@@ -665,6 +690,7 @@ export async function onRequest(context: any) {
       const inviteCode = body.inviteCode
         ? normalizeInviteCode(String(body.inviteCode))
         : undefined;
+      const phone = body.phone ? String(body.phone) : undefined;
       if (!batchId || !pizzaId || !date || !slotId) {
         return jsonResponse({ error: "batchId, pizzaId, date, and slotId are required" }, 400);
       }
@@ -676,10 +702,20 @@ export async function onRequest(context: any) {
         date,
         slotId,
         holdStore,
-        inviteCode ? { inviteCode } : undefined,
+        {
+          ...(inviteCode ? { inviteCode } : {}),
+          ...(phone ? { phone } : {}),
+        },
       );
       if (!result.ok) {
-        return jsonResponse({ error: result.error }, result.status);
+        return jsonResponse(
+          {
+            error: result.error,
+            code: result.retryAfterSeconds ? "priority_window" : undefined,
+            retryAfterSeconds: result.retryAfterSeconds,
+          },
+          result.status,
+        );
       }
 
       return jsonResponse(
@@ -696,6 +732,47 @@ export async function onRequest(context: any) {
       const holdId = path.split("/").pop()!;
       await releaseTryPieHold(holdId, holdStore);
       return new Response(null, { status: 204 });
+    }
+
+    if (path === "/api/try-pie/eligibility" && method === "POST") {
+      const body = await parseBody(request);
+      const phone = String(body.phone ?? "");
+      const batchId = String(body.batchId ?? "");
+      if (!batchId) {
+        return jsonResponse({ error: "batchId is required" }, 400);
+      }
+      const batch = await storage.getBatchById(batchId);
+      if (!batch) {
+        return jsonResponse({ error: "Batch not found" }, 404);
+      }
+      const inviteCode = body.inviteCode
+        ? normalizeInviteCode(String(body.inviteCode))
+        : undefined;
+      const result = await assertSignupAllowed(storage, batch, phone, { inviteCode });
+      if (!result.ok) {
+        return jsonResponse(
+          {
+            allowed: false,
+            error: result.error,
+            code: result.code,
+            retryAfterSeconds: result.retryAfterSeconds ?? 0,
+          },
+          result.status,
+        );
+      }
+      return jsonResponse({ allowed: true });
+    }
+
+    if (
+      /^\/api\/batches\/[^/]+\/activate$/.test(path) &&
+      method === "POST"
+    ) {
+      const batchId = path.split("/").filter(Boolean)[2];
+      const updated = await storage.activateBatch(batchId);
+      if (!updated) {
+        return jsonResponse({ error: "Batch not found" }, 404);
+      }
+      return jsonResponse(updated);
     }
 
     if (

@@ -1,4 +1,5 @@
 import { comparePickupTime } from "@shared/pickup-time";
+import { getPriorityWindowEndsAt } from "@shared/signup-throttle";
 import type { Batch, PickupSlot } from "@shared/schema";
 import { getHeldSlotIds } from "./try-pie-hold";
 import type { HoldStore } from "./try-pie-hold-store";
@@ -17,10 +18,12 @@ export type TryPieContext = {
     id: string;
     serviceDate: string;
     batchNumber: number;
+    activatedAt: string | null;
+    priorityWindowEndsAt: string | null;
   } | null;
   pizzas: TryPieBatchPizza[];
 } & (
-  | { available: false; soldOut?: boolean }
+  | { available: false; soldOut?: boolean; notActivated?: boolean }
   | {
       available: true;
       pizzaId: string;
@@ -31,19 +34,25 @@ export type TryPieContext = {
     }
 );
 
+function batchSummary(batch: Batch) {
+  const endsAt = getPriorityWindowEndsAt(batch.activatedAt);
+  return {
+    id: batch.id,
+    serviceDate: batch.serviceDate,
+    batchNumber: batch.batchNumber,
+    activatedAt: batch.activatedAt ? new Date(batch.activatedAt).toISOString() : null,
+    priorityWindowEndsAt: endsAt ? endsAt.toISOString() : null,
+  };
+}
+
 async function getUpcomingBatch(storage: IStorage): Promise<Batch | undefined> {
   const today = new Date().toISOString().split("T")[0];
-  let batch = await storage.getBatchByDate(today);
+  const allBatches = await storage.getBatches();
+  const candidates = allBatches
+    .filter((b) => Boolean(b.activatedAt) && b.serviceDate >= today)
+    .sort((a, b) => a.serviceDate.localeCompare(b.serviceDate));
 
-  if (!batch) {
-    const allBatches = await storage.getBatches();
-    batch =
-      allBatches
-        .filter((b) => b.serviceDate >= today)
-        .sort((a, b) => a.serviceDate.localeCompare(b.serviceDate))[0] ?? undefined;
-  }
-
-  return batch;
+  return candidates[0];
 }
 
 function mapBatchPizzas(
@@ -65,23 +74,23 @@ async function buildAvailableContext(
   options: { bypassSoldOut?: boolean; holdStore?: HoldStore } = {},
 ): Promise<TryPieContext> {
   const pizzas = mapBatchPizzas(batchPizzas);
-  const batchSummary = {
-    id: batch.id,
-    serviceDate: batch.serviceDate,
-    batchNumber: batch.batchNumber,
-  };
+  const summary = batchSummary(batch);
+
+  if (!batch.activatedAt) {
+    return { batch: summary, pizzas, available: false, notActivated: true };
+  }
 
   if (batchPizzas.length === 0) {
-    return { batch: batchSummary, pizzas, available: false };
+    return { batch: summary, pizzas, available: false };
   }
 
   if (!batch.slotListId) {
-    return { batch: batchSummary, pizzas, available: false };
+    return { batch: summary, pizzas, available: false };
   }
 
   const anyAvailable = batchPizzas.some((entry) => entry.available > 0);
   if (!anyAvailable && !options.bypassSoldOut) {
-    return { batch: batchSummary, pizzas, available: false, soldOut: true };
+    return { batch: summary, pizzas, available: false, soldOut: true };
   }
 
   const selected =
@@ -99,7 +108,7 @@ async function buildAvailableContext(
   const bookedSlotIds = Array.from(new Set([...orderBookedSlotIds, ...heldSlotIds]));
 
   return {
-    batch: batchSummary,
+    batch: summary,
     pizzas,
     available: true,
     pizzaId: selected.pizzaId,

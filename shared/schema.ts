@@ -266,12 +266,15 @@ export const batches = pgTable("batches", {
   slotListId: varchar("slot_list_id").references(() => slotLists.slotListId),
   serviceStartHour: integer("service_start_hour").notNull().default(16), // 16 = 4PM
   serviceEndHour: integer("service_end_hour").notNull().default(20), // 20 = 8PM
+  /** When set, batch is open for homepage Try a Pie signups. */
+  activatedAt: timestamp("activated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertBatchSchema = createInsertSchema(batches).omit({
   id: true,
   createdAt: true,
+  activatedAt: true,
 });
 
 export type InsertBatch = z.infer<typeof insertBatchSchema>;

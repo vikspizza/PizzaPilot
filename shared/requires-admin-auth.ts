@@ -22,6 +22,10 @@ export function requiresAdminAuth(
     return true;
   }
 
+  if (method === "POST" && pathname === "/api/orders/admin") {
+    return true;
+  }
+
   if (method === "POST" && pathname === "/api/pizzas") {
     return true;
   }
@@ -51,6 +55,10 @@ export function requiresAdminAuth(
   }
 
   if (/^\/api\/batches\/[^/]+\/invites$/.test(pathname) && (method === "GET" || method === "POST")) {
+    return true;
+  }
+
+  if (/^\/api\/batches\/[^/]+\/activate$/.test(pathname) && method === "POST") {
     return true;
   }
 

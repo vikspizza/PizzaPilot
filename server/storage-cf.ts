@@ -50,6 +50,7 @@ import {
   selectTryPieInvitesByBatchId,
   unclaimTryPieInvite as unclaimTryPieInviteRecord,
 } from "./try-pie-invite-storage";
+import { isFrequentCustomer as isFrequentCustomerRecord } from "./frequent-customer";
 import {
   insertReviewAnswers,
   selectActiveReviewQuestions,
@@ -308,6 +309,22 @@ class DatabaseStorage {
     return updated;
   }
 
+  async activateBatch(id: string): Promise<Batch | undefined> {
+    const existing = await this.getBatchById(id);
+    if (!existing) {
+      return undefined;
+    }
+    if (existing.activatedAt) {
+      return existing;
+    }
+    const [updated] = await this.db
+      .update(schema.batches)
+      .set({ activatedAt: new Date() })
+      .where(eq(schema.batches.id, id))
+      .returning();
+    return updated;
+  }
+
   async deleteBatch(id: string): Promise<void> {
     await this.db.delete(schema.batches).where(eq(schema.batches.id, id));
   }
@@ -521,6 +538,10 @@ class DatabaseStorage {
 
   async unclaimTryPieInvite(code: string): Promise<void> {
     await unclaimTryPieInviteRecord(this.db, code);
+  }
+
+  async isFrequentCustomer(phone10: string): Promise<boolean> {
+    return isFrequentCustomerRecord(this.db, phone10);
   }
 }
 
