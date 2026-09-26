@@ -1,4 +1,4 @@
-import { comparePickupTime } from "@shared/pickup-time";
+import { comparePickupTime, isBatchServiceWindowOpen } from "@shared/pickup-time";
 import { getPriorityWindowEndsAt } from "@shared/signup-throttle";
 import type { Batch, PickupSlot } from "@shared/schema";
 import { getHeldSlotIds } from "./try-pie-hold";
@@ -46,10 +46,9 @@ function batchSummary(batch: Batch) {
 }
 
 async function getUpcomingBatch(storage: IStorage): Promise<Batch | undefined> {
-  const today = new Date().toISOString().split("T")[0];
   const allBatches = await storage.getBatches();
   const candidates = allBatches
-    .filter((b) => Boolean(b.activatedAt) && b.serviceDate >= today)
+    .filter((b) => Boolean(b.activatedAt) && isBatchServiceWindowOpen(b))
     .sort((a, b) => a.serviceDate.localeCompare(b.serviceDate));
 
   return candidates[0];

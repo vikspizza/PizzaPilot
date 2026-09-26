@@ -1,12 +1,12 @@
 /** Vik's Pizza service timezone (handles PST/PDT automatically). */
-export { PACIFIC_TZ, comparePickupTime, formatPickupTime, normalizePickupTime } from "@shared/pickup-time";
-
-import { PACIFIC_TZ } from "@shared/pickup-time";
-
-/** Today's date (YYYY-MM-DD) in Pacific time — for admin defaults. */
-export function todayPacificDateString(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: PACIFIC_TZ }).format(new Date());
-}
+export {
+  PACIFIC_TZ,
+  comparePickupTime,
+  formatPickupTime,
+  normalizePickupTime,
+  todayPacificDateString,
+  isBatchServiceWindowOpen,
+} from "@shared/pickup-time";
 
 /** Format order date + pickup time for display (e.g. Fri, Jul 5, 2025, 4:00 PM PDT). */
 export function formatOrderPickupDateTime(serviceDate: string, pickupTime: string): string {

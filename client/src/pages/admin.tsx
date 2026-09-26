@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Lock, Check, X, ChefHat, Package, Truck, XCircle, Plus, Edit, Trash2, Calendar, Clock, Star } from "lucide-react";
+import { Loader2, Lock, Check, X, ChefHat, Package, Truck, XCircle, Plus, Edit, Trash2, Calendar, Clock, Star, ChevronLeft, ChevronRight } from "lucide-react";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext } from "@/components/ui/pagination";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -29,7 +29,45 @@ function formatBatchServiceDate(serviceDate: string): string {
 }
 
 function formatBatchOptionLabel(batch: Batch): string {
-  return `Batch #${batch.batchNumber} — ${formatBatchServiceDate(batch.serviceDate)}`;
+  if (batch.batchNumber > 0) {
+    return `Batch #${batch.batchNumber} — ${formatBatchServiceDate(batch.serviceDate)}`;
+  }
+  return `Batch — ${formatBatchServiceDate(batch.serviceDate)}`;
+}
+
+/** Batches that have orders, for the Orders tab filter (fallback if /api/batches fails). */
+function batchesForOrderFilter(orders: Order[] | undefined, batches: Batch[] | undefined): Batch[] {
+  const orderList = orders ?? [];
+  const idsWithOrders = new Set(
+    orderList.map((order) => order.batchId).filter((id): id is string => Boolean(id)),
+  );
+  if (idsWithOrders.size === 0) {
+    return [];
+  }
+
+  const fromApi = (batches ?? []).filter((batch) => idsWithOrders.has(batch.id));
+  if (fromApi.length > 0) {
+    return [...fromApi].sort((a, b) => b.batchNumber - a.batchNumber);
+  }
+
+  const fallback: Batch[] = [];
+  for (const batchId of Array.from(idsWithOrders)) {
+    const sample = orderList.find((order) => order.batchId === batchId);
+    if (!sample) {
+      continue;
+    }
+    fallback.push({
+      id: batchId,
+      batchNumber: 0,
+      serviceDate: sample.date,
+      slotListId: null,
+      serviceStartHour: 16,
+      serviceEndHour: 20,
+      activatedAt: null,
+      createdAt: sample.createdAt,
+    });
+  }
+  return fallback.sort((a, b) => b.serviceDate.localeCompare(a.serviceDate));
 }
 
 export default function Admin() {
@@ -109,42 +147,39 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
     queryFn: () => api.getOrders(),
   });
 
-  const { data: batches, isLoading: batchesLoading } = useQuery({
+  const {
+    data: batches,
+    isLoading: batchesLoading,
+    error: batchesError,
+  } = useQuery({
     queryKey: ["batches"],
     queryFn: api.getBatches,
   });
 
-  const batchesWithOrders = useMemo(() => {
-    const batchIdsWithOrders = new Set(
-      (orders ?? [])
-        .map((order) => order.batchId)
-        .filter((batchId): batchId is string => Boolean(batchId)),
-    );
-
-    return [...(batches ?? [])]
-      .filter((batch) => batchIdsWithOrders.has(batch.id))
-      .sort((a, b) => b.batchNumber - a.batchNumber);
-  }, [batches, orders]);
+  const batchesForFilter = useMemo(
+    () => batchesForOrderFilter(orders, batches),
+    [orders, batches],
+  );
 
   useEffect(() => {
-    if (batchesWithOrders.length === 0) {
+    if (batchesForFilter.length === 0) {
       if (selectedBatchId) {
         setSelectedBatchId("");
       }
       return;
     }
 
-    if (selectedBatchId && batchesWithOrders.some((batch) => batch.id === selectedBatchId)) {
+    if (selectedBatchId && batchesForFilter.some((batch) => batch.id === selectedBatchId)) {
       return;
     }
 
     const today = todayPacificDateString();
-    const upcoming = [...batchesWithOrders]
+    const upcoming = [...batchesForFilter]
       .filter((batch) => batch.serviceDate >= today)
       .sort((a, b) => a.serviceDate.localeCompare(b.serviceDate))[0];
 
-    setSelectedBatchId((upcoming ?? batchesWithOrders[0]).id);
-  }, [batchesWithOrders, selectedBatchId]);
+    setSelectedBatchId((upcoming ?? batchesForFilter[0]).id);
+  }, [batchesForFilter, selectedBatchId]);
 
   useEffect(() => {
     if (ordersError instanceof Error && ordersError.message.includes("session expired")) {
@@ -288,19 +323,21 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
                     <Select
                       value={selectedBatchId || undefined}
                       onValueChange={setSelectedBatchId}
-                      disabled={ordersLoading || batchesLoading || batchesWithOrders.length === 0}
+                      disabled={ordersLoading || batchesForFilter.length === 0}
                     >
                       <SelectTrigger id="orders-batch-filter">
                         <SelectValue
                           placeholder={
-                            ordersLoading || batchesLoading
+                            ordersLoading
                               ? "Loading…"
-                              : "No batches with orders"
+                              : batchesForFilter.length === 0
+                                ? "No batches with orders"
+                                : "Select batch"
                           }
                         />
                       </SelectTrigger>
                       <SelectContent>
-                        {batchesWithOrders.map((batch) => (
+                        {batchesForFilter.map((batch) => (
                           <SelectItem key={batch.id} value={batch.id}>
                             {formatBatchOptionLabel(batch)}
                           </SelectItem>
@@ -328,9 +365,21 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
                 </div>
               </CardHeader>
               <CardContent>
-                {ordersLoading || batchesLoading ? (
+                {ordersError ? (
+                  <p className="text-destructive text-sm">
+                    {ordersError instanceof Error ? ordersError.message : "Failed to load orders."}
+                  </p>
+                ) : null}
+                {batchesError && (orders?.length ?? 0) > 0 ? (
+                  <p className="text-amber-600 dark:text-amber-400 text-sm mb-4">
+                    Batch list could not be loaded (check production DB migration for{" "}
+                    <code className="text-xs">batches.activated_at</code>). Showing orders using
+                    batch dates from order data.
+                  </p>
+                ) : null}
+                {ordersLoading ? (
                   <Loader2 className="animate-spin" />
-                ) : batchesWithOrders.length === 0 ? (
+                ) : !orders?.length ? (
                   <p className="text-muted-foreground">No orders yet.</p>
                 ) : filteredOrders.length === 0 ? (
                   <p className="text-muted-foreground">No orders match these filters.</p>
@@ -2221,6 +2270,23 @@ function ReviewAnalytics({ onSessionExpired }: { onSessionExpired: () => void })
     });
   }, [batches]);
 
+  useEffect(() => {
+    if (sortedBatches.length === 0) {
+      return;
+    }
+    if (selectedBatchId && sortedBatches.some((batch) => batch.id === selectedBatchId)) {
+      return;
+    }
+    // Future batches can't have reviews yet, so default to the latest one already served.
+    const today = todayPacificDateString();
+    const latestServed = sortedBatches.find((batch) => batch.serviceDate <= today);
+    setSelectedBatchId((latestServed ?? sortedBatches[0]).id);
+  }, [sortedBatches, selectedBatchId]);
+
+  const selectedBatchIndex = sortedBatches.findIndex((batch) => batch.id === selectedBatchId);
+  const olderBatch = selectedBatchIndex >= 0 ? sortedBatches[selectedBatchIndex + 1] : undefined;
+  const newerBatch = selectedBatchIndex > 0 ? sortedBatches[selectedBatchIndex - 1] : undefined;
+
   const selectedPizzaGroup = analytics?.pizzas.find((p) => p.pizza.id === selectedPizzaId);
   const customers = selectedPizzaGroup?.customers ?? [];
   const totalCustomers = customers.length;
@@ -2239,22 +2305,46 @@ function ReviewAnalytics({ onSessionExpired }: { onSessionExpired: () => void })
               <Label htmlFor="reviews-batch-filter" className="text-sm text-muted-foreground">
                 Batch
               </Label>
-              <Select
-                value={selectedBatchId || undefined}
-                onValueChange={setSelectedBatchId}
-                disabled={batchesLoading || sortedBatches.length === 0}
-              >
-                <SelectTrigger id="reviews-batch-filter">
-                  <SelectValue placeholder={batchesLoading ? "Loading…" : "Select a batch"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {sortedBatches.map((batch) => (
-                    <SelectItem key={batch.id} value={batch.id}>
-                      {formatBatchOptionLabel(batch)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Previous batch"
+                  title="Previous batch"
+                  disabled={!olderBatch}
+                  onClick={() => olderBatch && setSelectedBatchId(olderBatch.id)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Select
+                  value={selectedBatchId || undefined}
+                  onValueChange={setSelectedBatchId}
+                  disabled={batchesLoading || sortedBatches.length === 0}
+                >
+                  <SelectTrigger id="reviews-batch-filter" className="flex-1">
+                    <SelectValue placeholder={batchesLoading ? "Loading…" : "Select a batch"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortedBatches.map((batch) => (
+                      <SelectItem key={batch.id} value={batch.id}>
+                        {formatBatchOptionLabel(batch)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Next batch"
+                  title="Next batch"
+                  disabled={!newerBatch}
+                  onClick={() => newerBatch && setSelectedBatchId(newerBatch.id)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             {analytics && analytics.pizzas.length > 1 ? (
               <div className="flex w-full flex-col gap-2 sm:min-w-[16rem]">

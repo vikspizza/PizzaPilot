@@ -243,10 +243,16 @@
     errorEl.hidden = !message;
   }
 
-  function setStatus(message) {
-    if (statusEl) {
-      statusEl.textContent = message;
+  /**
+   * @param {string} message
+   * @param {{ soldOut?: boolean }} [options]
+   */
+  function setStatus(message, options = {}) {
+    if (!statusEl) {
+      return;
     }
+    statusEl.textContent = message;
+    statusEl.classList.toggle("try-pie-status-sold-out", Boolean(options.soldOut));
   }
 
   function updateTimerDisplay() {
@@ -426,16 +432,17 @@
       if (!context || !context.available) {
         const isSoldOut = Boolean(context?.soldOut);
         /** @type {HTMLButtonElement} */ (btn).disabled = true;
-        /** @type {HTMLButtonElement} */ (btn).classList.add("try-pie-btn-sold-out");
-        /** @type {HTMLButtonElement} */ (btn).textContent = isSoldOut ? "Sold Out" : "Try a Pie";
+        /** @type {HTMLButtonElement} */ (btn).classList.toggle("try-pie-btn-sold-out", isSoldOut);
+        /** @type {HTMLButtonElement} */ (btn).textContent = "Try a Pie";
         inviteBlock.hidden = !isSoldOut;
         if (!isSoldOut) {
           inviteForm.hidden = true;
         }
         setStatus(
           isSoldOut
-            ? ""
+            ? "Sold Out"
             : "Pizza is available Friday or Saturday evenings. Signup usually opens up 24 hours in advance. Please check back here. Many thanks for your support. 🙏",
+          { soldOut: isSoldOut },
         );
         return false;
       }

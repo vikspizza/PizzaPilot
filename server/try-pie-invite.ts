@@ -1,4 +1,4 @@
-import { PACIFIC_TZ } from "@shared/pickup-time";
+import { isBatchServiceWindowOpen } from "@shared/pickup-time";
 import type { TryPieInvite } from "@shared/schema";
 import type { IStorage } from "./storage";
 import { normalizeInviteCode } from "./try-pie-invite-storage";
@@ -6,10 +6,6 @@ import { normalizeInviteCode } from "./try-pie-invite-storage";
 export type InviteValidationResult =
   | { ok: true; invite: TryPieInvite }
   | { ok: false; status: number; error: string };
-
-function todayPacificDateString(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: PACIFIC_TZ }).format(new Date());
-}
 
 export async function validateUnusedTryPieInvite(
   storage: IStorage,
@@ -47,12 +43,11 @@ export async function validateUnusedTryPieInvite(
     return { ok: false, status: 404, error: "Batch not found" };
   }
 
-  const today = todayPacificDateString();
-  if (batch.serviceDate < today) {
+  if (!isBatchServiceWindowOpen(batch)) {
     return {
       ok: false,
       status: 410,
-      error: "That invite code has expired with the batch service date.",
+      error: "That invite code has expired with the batch service window.",
     };
   }
 

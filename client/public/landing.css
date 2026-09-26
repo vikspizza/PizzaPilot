@@ -453,6 +453,13 @@ body.landing-home {
   min-height: 1.2em;
 }
 
+.try-pie-status-sold-out {
+  color: rgba(255, 196, 140, 0.95);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 body.try-pie-modal-open {
   overflow: hidden;
 }

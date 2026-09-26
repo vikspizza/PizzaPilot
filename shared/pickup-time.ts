@@ -1,6 +1,39 @@
 /** Pacific wall-clock pickup times (no date component). */
 export const PACIFIC_TZ = "America/Los_Angeles";
 
+/** Today's date (YYYY-MM-DD) in Pacific time. */
+export function todayPacificDateString(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: PACIFIC_TZ }).format(now);
+}
+
+/** Current hour (0–23) in Pacific time. */
+export function pacificHour(now: Date = new Date()): number {
+  const hourPart = new Intl.DateTimeFormat("en-US", {
+    timeZone: PACIFIC_TZ,
+    hour: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(now).find((part) => part.type === "hour")?.value;
+  return Number(hourPart ?? "0");
+}
+
+/**
+ * True while the batch's service window is still open in Pacific time:
+ * any future service date, or today before `serviceEndHour`.
+ */
+export function isBatchServiceWindowOpen(
+  batch: { serviceDate: string; serviceEndHour: number },
+  now: Date = new Date(),
+): boolean {
+  const today = todayPacificDateString(now);
+  if (batch.serviceDate > today) {
+    return true;
+  }
+  if (batch.serviceDate < today) {
+    return false;
+  }
+  return pacificHour(now) < batch.serviceEndHour;
+}
+
 /** Normalize to HH:MM:SS for database storage. */
 export function normalizePickupTime(time: string): string {
   const parts = time.trim().split(":");
