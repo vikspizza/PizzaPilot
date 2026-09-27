@@ -906,7 +906,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const inviteCode = req.body?.inviteCode
         ? normalizeInviteCode(String(req.body.inviteCode))
         : undefined;
-      const result = await assertSignupAllowed(storage, batch, phone, { inviteCode });
+      const result = await assertSignupAllowed(storage, batch, phone, {
+        stage: "eligibility",
+        inviteCode,
+      });
       if (!result.ok) {
         return res.status(result.status).json({
           allowed: false,

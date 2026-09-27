@@ -76,7 +76,7 @@ export async function createOrderFromRequest(
       storage,
       batch,
       orderRequest.customerPhone,
-      { inviteCode: orderRequest.inviteCode },
+      { stage: "order", inviteCode: orderRequest.inviteCode },
     );
     if (!throttle.ok) {
       return {

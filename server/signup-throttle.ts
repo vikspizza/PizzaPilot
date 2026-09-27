@@ -1,10 +1,9 @@
-import type { Batch } from "@shared/schema";
+import type { Batch, SignupThrottleStage } from "@shared/schema";
 import {
   getPriorityRetryAfterSeconds,
   isInSignupPriorityWindow,
   priorityWaitMessage,
 } from "@shared/signup-throttle";
-import { isFrequentCustomer } from "./frequent-customer";
 import type { IStorage } from "./storage";
 
 export type SignupThrottleResult =
@@ -30,7 +29,7 @@ export async function assertSignupAllowed(
   storage: IStorage,
   batch: Batch,
   phone: string | undefined,
-  options?: { inviteCode?: string },
+  options: { stage: SignupThrottleStage; inviteCode?: string },
 ): Promise<SignupThrottleResult> {
   if (!batch.activatedAt) {
     return {
@@ -41,7 +40,7 @@ export async function assertSignupAllowed(
     };
   }
 
-  if (options?.inviteCode) {
+  if (options.inviteCode) {
     return { ok: true };
   }
 
@@ -64,6 +63,18 @@ export async function assertSignupAllowed(
   }
 
   const retryAfterSeconds = getPriorityRetryAfterSeconds(batch.activatedAt);
+  try {
+    await storage.recordSignupThrottle({
+      batchId: batch.id,
+      phone: phone10,
+      stage: options.stage,
+      retryAfterSeconds,
+    });
+  } catch (error) {
+    // Logging must never block or break signup (e.g. table not yet migrated).
+    console.warn("Failed to record signup throttle:", error);
+  }
+
   return {
     ok: false,
     status: 403,

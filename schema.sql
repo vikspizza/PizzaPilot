@@ -194,6 +194,22 @@ ALTER TABLE "try_pie_invites" ADD CONSTRAINT "try_pie_invites_batch_id_batches_i
 	FOREIGN KEY ("batch_id") REFERENCES "batches"("id") ON DELETE cascade ON UPDATE no action;
 
 CREATE INDEX IF NOT EXISTS "idx_try_pie_invites_batch_id" ON "try_pie_invites"("batch_id");
+
+-- One row each time a frequent customer is held back during a batch's priority window
+CREATE TABLE IF NOT EXISTS "signup_throttle" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"batch_id" varchar NOT NULL,
+	"phone" text NOT NULL,
+	"stage" text NOT NULL, -- eligibility | hold | order
+	"retry_after_seconds" integer NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+
+ALTER TABLE "signup_throttle" ADD CONSTRAINT "signup_throttle_batch_id_batches_id_fk"
+	FOREIGN KEY ("batch_id") REFERENCES "batches"("id") ON DELETE cascade ON UPDATE no action;
+
+CREATE INDEX IF NOT EXISTS "idx_signup_throttle_batch_id" ON "signup_throttle"("batch_id");
+CREATE INDEX IF NOT EXISTS "idx_signup_throttle_phone" ON "signup_throttle"("phone");
 CREATE INDEX IF NOT EXISTS "idx_pickup_slots_slot_list_id" ON "pickup_slots"("slot_list_id");
 CREATE INDEX IF NOT EXISTS "idx_pickup_slots_pickup_time" ON "pickup_slots"("pickup_time");
 CREATE INDEX IF NOT EXISTS "idx_slot_lists_active_yorn" ON "slot_lists"("active_yorn");

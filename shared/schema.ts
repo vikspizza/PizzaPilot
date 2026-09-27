@@ -315,6 +315,20 @@ export const insertTryPieInviteSchema = createInsertSchema(tryPieInvites).omit({
 export type InsertTryPieInvite = z.infer<typeof insertTryPieInviteSchema>;
 export type TryPieInvite = typeof tryPieInvites.$inferSelect;
 
+// One row each time a frequent customer is held back during a batch's priority window
+export const signupThrottle = pgTable("signup_throttle", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: varchar("batch_id").references(() => batches.id, { onDelete: "cascade" }).notNull(),
+  phone: text("phone").notNull(),
+  /** Where signup was blocked: eligibility (phone check), hold (pickup time), or order (submit). */
+  stage: text("stage").notNull(),
+  retryAfterSeconds: integer("retry_after_seconds").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type SignupThrottleStage = "eligibility" | "hold" | "order";
+export type SignupThrottleEntry = typeof signupThrottle.$inferSelect;
+
 // Pickup slot lists and bookable time slots
 export const slotLists = pgTable("slot_lists", {
   slotListId: varchar("slot_list_id").primaryKey().default(sql`gen_random_uuid()`),

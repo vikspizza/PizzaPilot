@@ -40,6 +40,7 @@ export async function createTryPieHold(
   }
 
   const throttle = await assertSignupAllowed(storage, batch, options?.phone, {
+    stage: "hold",
     inviteCode: options?.inviteCode,
   });
   if (!throttle.ok) {

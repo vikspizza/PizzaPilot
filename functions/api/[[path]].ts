@@ -748,7 +748,10 @@ export async function onRequest(context: any) {
       const inviteCode = body.inviteCode
         ? normalizeInviteCode(String(body.inviteCode))
         : undefined;
-      const result = await assertSignupAllowed(storage, batch, phone, { inviteCode });
+      const result = await assertSignupAllowed(storage, batch, phone, {
+        stage: "eligibility",
+        inviteCode,
+      });
       if (!result.ok) {
         return jsonResponse(
           {
