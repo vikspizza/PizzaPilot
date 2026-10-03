@@ -347,6 +347,11 @@ export async function onRequest(context: any) {
       return jsonResponse(updated);
     }
 
+    if (path === "/api/reports/frequent-customers" && method === "GET") {
+      const report = await storage.listFrequentCustomers();
+      return jsonResponse(report);
+    }
+
     // ===== REVIEWS =====
     if (path === "/api/review-questions" && method === "GET") {
       const questions = await storage.getReviewQuestions();

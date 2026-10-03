@@ -5,6 +5,7 @@ import viteConfig from "../vite.config";
 import fs from "fs";
 import path from "path";
 import { nanoid } from "nanoid";
+import { APP_ROUTE_DIRS } from "../script/app-routes";
 
 const viteLogger = createLogger();
 
@@ -33,13 +34,20 @@ export async function setupVite(server: Server, app: Express) {
 
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
+    const pathname = url.split("?")[0] ?? "";
+    const useAppShell =
+      pathname === "/app" ||
+      pathname === "/app.html" ||
+      APP_ROUTE_DIRS.some(
+        (dir) => pathname === `/${dir}` || pathname.startsWith(`/${dir}/`),
+      );
 
     try {
       const clientTemplate = path.resolve(
         import.meta.dirname,
         "..",
         "client",
-        "index.html",
+        useAppShell ? "app.html" : "index.html",
       );
 
       // always reload the index.html file from disk incase it changes

@@ -66,6 +66,10 @@ export function requiresAdminAuth(
     return true;
   }
 
+  if (method === "GET" && pathname === "/api/reports/frequent-customers") {
+    return true;
+  }
+
   if (pathname === "/api/slot-lists" && method === "POST") {
     return true;
   }

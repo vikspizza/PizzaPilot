@@ -27,6 +27,8 @@ if (useNeon) {
 } else {
   // Node.js environment (Express dev, etc.) - use Pool
   // Lazy import to avoid bundling pg in Cloudflare
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
   const pgModule = require("pg");
   const { Pool } = pgModule;
   const pool = new Pool({ connectionString: databaseUrl });

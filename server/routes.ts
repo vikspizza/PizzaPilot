@@ -316,6 +316,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/reports/frequent-customers", async (_req, res) => {
+    try {
+      const report = await storage.listFrequentCustomers();
+      res.json(report);
+    } catch (error) {
+      console.error("Error fetching frequent customers:", error);
+      res.status(500).json({ error: "Failed to fetch frequent customers" });
+    }
+  });
+
   // ===== REVIEWS =====
   app.get("/api/review-questions", async (_req, res) => {
     try {

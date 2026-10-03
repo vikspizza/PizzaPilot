@@ -49,7 +49,11 @@ import {
   selectTryPieInvitesByBatchId,
   unclaimTryPieInvite as unclaimTryPieInviteRecord,
 } from "./try-pie-invite-storage";
-import { isFrequentCustomer as isFrequentCustomerRecord } from "./frequent-customer";
+import {
+  isFrequentCustomer as isFrequentCustomerRecord,
+  listFrequentCustomers as listFrequentCustomersReport,
+  type FrequentCustomersReport,
+} from "./frequent-customer";
 import { insertSignupThrottle, type SignupThrottleLogInput } from "./signup-throttle-log";
 import {
   insertReviewAnswers,
@@ -155,6 +159,7 @@ export interface IStorage {
 
   /** ≥3 non-cancelled orders in the last 6 batches. */
   isFrequentCustomer(phone10: string): Promise<boolean>;
+  listFrequentCustomers(): Promise<FrequentCustomersReport>;
   recordSignupThrottle(entry: SignupThrottleLogInput): Promise<void>;
 }
 
@@ -635,6 +640,10 @@ export class DatabaseStorage implements IStorage {
 
   async isFrequentCustomer(phone10: string): Promise<boolean> {
     return isFrequentCustomerRecord(db, phone10);
+  }
+
+  async listFrequentCustomers(): Promise<FrequentCustomersReport> {
+    return listFrequentCustomersReport(db);
   }
 
   async recordSignupThrottle(entry: SignupThrottleLogInput): Promise<void> {

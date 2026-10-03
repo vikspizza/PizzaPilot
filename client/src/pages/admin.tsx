@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Pizza, type Order, type Batch, type BatchPizza, type SlotList, type PickupSlot, type TryPieInvite } from "@/lib/api";
+import { AdminReports } from "@/components/admin-reports";
 import { Layout } from "@/components/layout";
 import { LandingHomeLink } from "@/components/landing-home-link";
 import { Button } from "@/components/ui/button";
@@ -297,11 +298,12 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
         </div>
 
         <Tabs defaultValue="orders">
-          <TabsList className="mb-4">
+          <TabsList className="mb-4 flex h-auto w-full flex-wrap justify-start">
             <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="menu">Menu Management</TabsTrigger>
             <TabsTrigger value="batches">Batch Management</TabsTrigger>
             <TabsTrigger value="reviews">Reviews</TabsTrigger>
+            <TabsTrigger value="reports">Reports</TabsTrigger>
             <TabsTrigger value="slots">Pickup Slots</TabsTrigger>
           </TabsList>
 
@@ -581,6 +583,10 @@ function AdminDashboard({ onSessionExpired }: { onSessionExpired: () => void }) 
 
           <TabsContent value="reviews">
             <ReviewAnalytics onSessionExpired={onSessionExpired} />
+          </TabsContent>
+
+          <TabsContent value="reports">
+            <AdminReports onSessionExpired={onSessionExpired} />
           </TabsContent>
 
           <TabsContent value="slots">

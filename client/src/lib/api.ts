@@ -68,6 +68,20 @@ export interface Customer {
   createdAt: string;
 }
 
+export interface FrequentCustomer {
+  customerId: string;
+  name: string;
+  phone: string;
+  orderCount: number;
+}
+
+export interface FrequentCustomersReport {
+  threshold: number;
+  lookbackBatches: number;
+  priorityWindowMinutes: number;
+  customers: FrequentCustomer[];
+}
+
 export interface Batch {
   id: string;
   batchNumber: number;
@@ -412,6 +426,18 @@ export const api = {
     const url = pizzaId ? `/api/reviews?pizzaId=${pizzaId}` : "/api/reviews";
     const res = await fetch(url);
     if (!res.ok) throw new Error("Failed to fetch reviews");
+    return res.json();
+  },
+
+  getFrequentCustomers: async (): Promise<FrequentCustomersReport> => {
+    const res = await fetch("/api/reports/frequent-customers", {
+      headers: adminAuthHeaders(),
+    });
+    handleAdminUnauthorized(res);
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || "Failed to fetch frequent customers");
+    }
     return res.json();
   },
 
