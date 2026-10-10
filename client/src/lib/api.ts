@@ -75,10 +75,17 @@ export interface FrequentCustomer {
   orderCount: number;
 }
 
+export interface FrequentWindowBatch {
+  batchNumber: number;
+  serviceDate: string;
+}
+
 export interface FrequentCustomersReport {
   threshold: number;
   lookbackBatches: number;
   priorityWindowMinutes: number;
+  anchorBatchNumber: number | null;
+  windowBatches: FrequentWindowBatch[];
   customers: FrequentCustomer[];
 }
 
@@ -429,10 +436,13 @@ export const api = {
     return res.json();
   },
 
-  getFrequentCustomers: async (): Promise<FrequentCustomersReport> => {
-    const res = await fetch("/api/reports/frequent-customers", {
-      headers: adminAuthHeaders(),
-    });
+  getFrequentCustomers: async (batchId: string): Promise<FrequentCustomersReport> => {
+    const res = await fetch(
+      `/api/reports/frequent-customers?batchId=${encodeURIComponent(batchId)}`,
+      {
+        headers: adminAuthHeaders(),
+      },
+    );
     handleAdminUnauthorized(res);
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));

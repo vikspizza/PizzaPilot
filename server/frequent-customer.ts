@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
@@ -20,12 +20,21 @@ export type FrequentCustomerRow = {
   orderCount: number;
 };
 
+export type FrequentWindowBatch = {
+  batchNumber: number;
+  serviceDate: string;
+};
+
 export type FrequentCustomersReport = {
   threshold: number;
   lookbackBatches: number;
   priorityWindowMinutes: number;
+  anchorBatchNumber: number | null;
+  windowBatches: FrequentWindowBatch[];
   customers: FrequentCustomerRow[];
 };
+
+type WindowBatchRow = FrequentWindowBatch & { id: string };
 
 async function recentBatchIds(db: AppDatabase): Promise<string[]> {
   const recentBatches = await db
@@ -37,11 +46,52 @@ async function recentBatchIds(db: AppDatabase): Promise<string[]> {
   return recentBatches.map((batch) => batch.id);
 }
 
+/** The selected batch plus older batches, newest first, capped at the lookback size. */
+async function batchesThrough(
+  db: AppDatabase,
+  anchorBatchId: string,
+): Promise<WindowBatchRow[] | null> {
+  const [anchor] = await db
+    .select({
+      id: schema.batches.id,
+      batchNumber: schema.batches.batchNumber,
+      serviceDate: schema.batches.serviceDate,
+    })
+    .from(schema.batches)
+    .where(eq(schema.batches.id, anchorBatchId))
+    .limit(1);
+
+  if (!anchor) {
+    return null;
+  }
+
+  return db
+    .select({
+      id: schema.batches.id,
+      batchNumber: schema.batches.batchNumber,
+      serviceDate: schema.batches.serviceDate,
+    })
+    .from(schema.batches)
+    .where(
+      or(
+        lt(schema.batches.serviceDate, anchor.serviceDate),
+        and(
+          eq(schema.batches.serviceDate, anchor.serviceDate),
+          lte(schema.batches.batchNumber, anchor.batchNumber),
+        ),
+      ),
+    )
+    .orderBy(desc(schema.batches.serviceDate), desc(schema.batches.batchNumber))
+    .limit(FREQUENT_LOOKBACK_BATCHES);
+}
+
 function emptyFrequentCustomersReport(): FrequentCustomersReport {
   return {
     threshold: FREQUENT_ORDER_THRESHOLD,
     lookbackBatches: FREQUENT_LOOKBACK_BATCHES,
     priorityWindowMinutes: SIGNUP_PRIORITY_WINDOW_MS / 60_000,
+    anchorBatchNumber: null,
+    windowBatches: [],
     customers: [],
   };
 }
@@ -73,10 +123,19 @@ export async function isFrequentCustomer(
 /** Customers who signup will hold back during a batch's priority window. */
 export async function listFrequentCustomers(
   db: AppDatabase,
-): Promise<FrequentCustomersReport> {
-  const batchIds = await recentBatchIds(db);
+  anchorBatchId: string,
+): Promise<FrequentCustomersReport | null> {
+  const windowBatches = await batchesThrough(db, anchorBatchId);
+  if (!windowBatches) {
+    return null;
+  }
+  const batchIds = windowBatches.map((batch) => batch.id);
   if (batchIds.length === 0) {
-    return emptyFrequentCustomersReport();
+    return {
+      ...emptyFrequentCustomersReport(),
+      anchorBatchNumber: null,
+      windowBatches: [],
+    };
   }
 
   const rows = await db
@@ -100,6 +159,11 @@ export async function listFrequentCustomers(
 
   return {
     ...emptyFrequentCustomersReport(),
+    anchorBatchNumber: windowBatches[0]?.batchNumber ?? null,
+    windowBatches: windowBatches.map(({ batchNumber, serviceDate }) => ({
+      batchNumber,
+      serviceDate,
+    })),
     customers: rows.map((row) => ({
       customerId: row.customerId,
       name: row.name,

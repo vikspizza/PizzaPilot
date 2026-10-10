@@ -159,7 +159,7 @@ export interface IStorage {
 
   /** ≥3 non-cancelled orders in the last 6 batches. */
   isFrequentCustomer(phone10: string): Promise<boolean>;
-  listFrequentCustomers(): Promise<FrequentCustomersReport>;
+  listFrequentCustomers(batchId: string): Promise<FrequentCustomersReport | null>;
   recordSignupThrottle(entry: SignupThrottleLogInput): Promise<void>;
 }
 
@@ -642,8 +642,8 @@ export class DatabaseStorage implements IStorage {
     return isFrequentCustomerRecord(db, phone10);
   }
 
-  async listFrequentCustomers(): Promise<FrequentCustomersReport> {
-    return listFrequentCustomersReport(db);
+  async listFrequentCustomers(batchId: string): Promise<FrequentCustomersReport | null> {
+    return listFrequentCustomersReport(db, batchId);
   }
 
   async recordSignupThrottle(entry: SignupThrottleLogInput): Promise<void> {

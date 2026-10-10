@@ -549,8 +549,8 @@ class DatabaseStorage {
     return isFrequentCustomerRecord(this.db, phone10);
   }
 
-  async listFrequentCustomers(): Promise<FrequentCustomersReport> {
-    return listFrequentCustomersReport(this.db);
+  async listFrequentCustomers(batchId: string): Promise<FrequentCustomersReport | null> {
+    return listFrequentCustomersReport(this.db, batchId);
   }
 
   async recordSignupThrottle(entry: SignupThrottleLogInput): Promise<void> {

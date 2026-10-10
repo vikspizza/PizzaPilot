@@ -26,6 +26,17 @@ function formatBatchServiceDate(serviceDate: string): string {
   return format(new Date(year, month - 1, day), "EEE, MMM d, yyyy");
 }
 
+function formatWindowLabel(
+  windowBatches: { batchNumber: number; serviceDate: string }[],
+): string {
+  if (windowBatches.length === 0) {
+    return "";
+  }
+  return windowBatches
+    .map((batch) => `#${batch.batchNumber} (${formatBatchServiceDate(batch.serviceDate)})`)
+    .join(", ");
+}
+
 function formatBatchOptionLabel(batch: Batch): string {
   if (batch.batchNumber > 0) {
     return `Batch #${batch.batchNumber} — ${formatBatchServiceDate(batch.serviceDate)}`;
@@ -68,8 +79,9 @@ export function AdminReports({ onSessionExpired }: { onSessionExpired: () => voi
     isLoading: frequentLoading,
     error: frequentError,
   } = useQuery({
-    queryKey: ["reports", "frequent-customers"],
-    queryFn: () => api.getFrequentCustomers(),
+    queryKey: ["reports", "frequent-customers", selectedBatchId],
+    queryFn: () => api.getFrequentCustomers(selectedBatchId),
+    enabled: Boolean(selectedBatchId),
     retry: false,
   });
 
@@ -167,13 +179,26 @@ export function AdminReports({ onSessionExpired }: { onSessionExpired: () => voi
     }
   };
 
+  const threshold = frequentCustomers?.threshold ?? 3;
+  const lookbackBatches = frequentCustomers?.lookbackBatches ?? 6;
+  const priorityWindowMinutes = frequentCustomers?.priorityWindowMinutes ?? 30;
+  const countedBatches = frequentCustomers?.windowBatches ?? [];
+  const windowLabel = formatWindowLabel(countedBatches);
+  const anchorLabel = selectedBatch ? formatBatchOptionLabel(selectedBatch) : "the selected batch";
+  const throttleDescription = windowLabel
+    ? `As of ${anchorLabel}. At least ${threshold} orders among these ${countedBatches.length} batches: ${windowLabel}. Cancelled orders are left off. Signup asks them to wait for the first ${priorityWindowMinutes} minutes after a batch opens. An invite code still lets them order during that window.`
+    : `At least ${threshold} orders in the last ${lookbackBatches} batches, not counting cancelled orders. Signup asks them to wait for the first ${priorityWindowMinutes} minutes after a batch opens. An invite code still lets them order during that window.`;
+
   const downloadThrottledCustomersPdf = async () => {
     const customers = frequentCustomers?.customers ?? [];
+    const filename = selectedBatch
+      ? `throttled-customers-batch-${selectedBatch.batchNumber}.pdf`
+      : "throttled-customers.pdf";
     try {
       await downloadPdf({
         title: "Customers who will be throttled",
-        subtitle: `At least ${threshold} orders in the last ${lookbackBatches} batches, not counting cancelled orders. Signup asks them to wait for the first ${priorityWindowMinutes} minutes after a batch opens. An invite code still lets them order during that window.`,
-        filename: "throttled-customers.pdf",
+        subtitle: throttleDescription,
+        filename,
         head: ["Customer", "Phone", "Orders"],
         body: customers.map((customer) => [
           customer.name,
@@ -189,10 +214,6 @@ export function AdminReports({ onSessionExpired }: { onSessionExpired: () => voi
       });
     }
   };
-
-  const threshold = frequentCustomers?.threshold ?? 3;
-  const lookbackBatches = frequentCustomers?.lookbackBatches ?? 6;
-  const priorityWindowMinutes = frequentCustomers?.priorityWindowMinutes ?? 30;
 
   return (
     <div className="space-y-4">
@@ -302,12 +323,7 @@ export function AdminReports({ onSessionExpired }: { onSessionExpired: () => voi
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between space-y-0">
           <div>
             <CardTitle>Customers who will be throttled</CardTitle>
-            <CardDescription>
-              Customers with at least {threshold} orders in the last {lookbackBatches} batches, not
-              counting cancelled orders. Signup asks them to wait for the first{" "}
-              {priorityWindowMinutes} minutes after a batch opens. An invite code still lets them
-              order during that window.
-            </CardDescription>
+            <CardDescription>{throttleDescription}</CardDescription>
           </div>
           <div className="flex gap-2">
             <Button
@@ -341,7 +357,9 @@ export function AdminReports({ onSessionExpired }: { onSessionExpired: () => voi
                 ? frequentError.message
                 : "Failed to load throttled customers."}
             </p>
-          ) : frequentLoading ? (
+          ) : sortedBatches.length === 0 ? (
+            <p className="text-muted-foreground">No batches yet.</p>
+          ) : !selectedBatchId || frequentLoading ? (
             <Loader2 className="animate-spin" />
           ) : !frequentCustomers?.customers.length ? (
             <p className="text-muted-foreground">No customers are at the throttle threshold.</p>

@@ -348,7 +348,14 @@ export async function onRequest(context: any) {
     }
 
     if (path === "/api/reports/frequent-customers" && method === "GET") {
-      const report = await storage.listFrequentCustomers();
+      const batchId = url.searchParams.get("batchId") ?? "";
+      if (!batchId) {
+        return jsonResponse({ error: "batchId is required" }, 400);
+      }
+      const report = await storage.listFrequentCustomers(batchId);
+      if (!report) {
+        return jsonResponse({ error: "Batch not found" }, 404);
+      }
       return jsonResponse(report);
     }
 

@@ -316,9 +316,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/reports/frequent-customers", async (_req, res) => {
+  app.get("/api/reports/frequent-customers", async (req, res) => {
     try {
-      const report = await storage.listFrequentCustomers();
+      const batchId = String(req.query.batchId ?? "");
+      if (!batchId) {
+        return res.status(400).json({ error: "batchId is required" });
+      }
+      const report = await storage.listFrequentCustomers(batchId);
+      if (!report) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
       res.json(report);
     } catch (error) {
       console.error("Error fetching frequent customers:", error);
